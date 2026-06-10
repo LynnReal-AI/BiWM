@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.ipynb_checkpoints/
+
+# Editor / OS
+*.swp
+*.swo
+.DS_Store
+
+# Weights / data / logs (not for the public code repo)
+*.pth
+*.pt
+*.safetensors
+*.ckpt
+ckpts/
+dataset/
+logs*/
+outputs/
