@@ -1,0 +1,202 @@
+# vendored from minWM HY15 trainer/training/muon.py (self-contained math+torch); MuonOpt optimizer (2D Newton-Schulz + 1D AdamW backup), aligned with minWM
+import math
+import torch
+try:
+    from torch.distributed.tensor import DTensor
+except ImportError:
+    # handle old pytorch versions
+    Dtensor = None
+
+# modified from https://github.com/KellerJordan/Muon/blob/master/muon.py
+def orthogonalize_via_newtonschulz5(G, steps = 5):
+    """Newton-Schulz quintic iteration for the zeroth power / orthogonalization of G."""
+    if isinstance(G, DTensor):
+        device_mesh = G.device_mesh
+        G = G.full_tensor()
+    else:
+        device_mesh = None
+        
+    assert len(G.shape) >= 2
+    a, b, c = (3.4445, -4.7750, 2.0315)
+    X = G
+    if G.size(-2) > G.size(-1):
+        X = X.mT
+    # Ensure spectral norm is at most 1
+    X = X / (X.norm(dim=(-2, -1), keepdim=True) + 1e-7)
+    # Perform the NS iterations
+    for _ in range(steps):
+        A = X @ X.T
+        B = b * A + c * A @ A  # quintic computation strategy adapted from suggestion by @jxbz, @leloykun, and @YouJiacheng
+        X = a * X + B @ X
+
+    if G.size(-2) > G.size(-1):
+        X = X.mT
+    
+    if device_mesh != None:
+        return DTensor.from_local(X, device_mesh) 
+    else:
+        return X
+
+class MuonOpt(torch.optim.Optimizer):
+    """MuonOpt - MomentUm Orthogonalized by Newton-schulz.
+
+    2D params (>=2D, not embed/head) use Muon; remaining params use the internal AdamW.
+    """
+
+    def __init__(
+        self,
+        lr=1e-3,
+        wd=0.1,
+        muon_params=None,
+        momentum=0.95,
+        nesterov=True,
+        ns_steps=5,
+        adamw_params=None,
+        adamw_betas=(0.95, 0.95),
+        adamw_eps=1e-8,
+    ):
+
+        defaults = dict(
+            lr=lr,
+            wd=wd,
+            momentum=momentum,
+            nesterov=nesterov,
+            ns_steps=ns_steps,
+            adamw_betas=adamw_betas,
+            adamw_eps=adamw_eps,
+        )
+
+        params = list(muon_params)
+        adamw_params = list(adamw_params) if adamw_params is not None else []
+        params.extend(adamw_params)
+        super().__init__(params, defaults)
+        # Sort parameters into those for which we will use MuonOpt, and those for which we will not
+        for p in muon_params:
+            # Use MuonOpt for every parameter in muon_params which is >= 2D and doesn't look like an embedding or head layer
+            assert p.ndim >= 2, p.ndim
+            self.state[p]["use_muon"] = True
+        for p in adamw_params:
+            # Do not use MuonOpt for parameters in adamw_params
+            self.state[p]["use_muon"] = False
+
+    def adjust_lr_for_muon(self, lr, param_shape):
+        A, B = param_shape[:2]
+        # We adjust the learning rate and weight decay based on the size of the parameter matrix
+        # as describted in the paper
+        adjusted_ratio = 0.2 * math.sqrt(max(A, B))
+        adjusted_lr = lr * adjusted_ratio
+        return adjusted_lr
+
+    def step(self, closure=None):
+        """Perform a single optimization step.
+
+        Args:
+            closure (Callable, optional): A closure that reevaluates the model
+                and returns the loss.
+        """
+        loss = None
+        if closure is not None:
+            with torch.enable_grad():
+                loss = closure()
+
+        for group in self.param_groups:
+
+            # ---- MuonOpt ----
+            params = [p for p in group["params"] if self.state[p]["use_muon"]]
+
+            lr = group["lr"]
+            wd = group["wd"]
+            momentum = group["momentum"]
+
+            # generate weight updates in distributed fashion
+            for p in params:
+                # sanity check
+                g = p.grad
+                if g is None:
+                    continue
+                if g.ndim > 2:
+                    g = g.view(g.size(0), -1)
+                assert g is not None
+
+                # calc update
+                state = self.state[p]
+                if "momentum_buffer" not in state:
+                    state["momentum_buffer"] = torch.zeros_like(g)
+                buf = state["momentum_buffer"]
+                buf.mul_(momentum).add_(g)
+                if group["nesterov"]:
+                    g = g.add(buf, alpha=momentum)
+                else:
+                    g = buf
+                g = g.bfloat16()
+                u = orthogonalize_via_newtonschulz5(g, steps=group["ns_steps"])
+
+                # scale update
+                adjusted_lr = self.adjust_lr_for_muon(lr, p.shape)
+
+                # apply weight decay
+                p.data.mul_(1 - lr * wd)
+
+                # apply update
+                p.data.add_(u.view(p.shape), alpha=-adjusted_lr)
+
+            # ---- AdamW backup ----
+            params = [p for p in group["params"] if not self.state[p]["use_muon"]]
+            lr = group['lr']
+            beta1, beta2 = group["adamw_betas"]
+            eps = group["adamw_eps"]
+            weight_decay = group["wd"]
+
+            for p in params:
+                g = p.grad
+                if g is None:
+                    continue
+                state = self.state[p]
+                if "step" not in state:
+                    state["step"] = 0
+                    state["moment1"] = torch.zeros_like(g)
+                    state["moment2"] = torch.zeros_like(g)
+                state["step"] += 1
+                step = state["step"]
+                buf1 = state["moment1"]
+                buf2 = state["moment2"]
+                buf1.lerp_(g, 1 - beta1)
+                buf2.lerp_(g.square(), 1 - beta2)
+
+                g = buf1 / (eps + buf2.sqrt())
+
+                bias_correction1 = 1 - beta1**step
+                bias_correction2 = 1 - beta2**step
+                scale = bias_correction1 / bias_correction2**0.5
+                p.data.mul_(1 - lr * weight_decay)
+                p.data.add_(g, alpha=-lr / scale)
+
+        return loss
+
+# help function to create the MuonOpt optimizer
+def build_muon_optimizer(model, 
+                       lr=1e-3,  
+                       weight_decay=0.1, 
+                       momentum=0.95, 
+                       adamw_betas=(0.95, 0.95), 
+                       adamw_eps=1e-8):
+    muon_params = [
+        p
+        for name, p in model.named_parameters()
+        if p.requires_grad and p.ndim >= 2 
+    ]
+    adamw_params = [
+        p
+        for name, p in model.named_parameters()
+        if p.requires_grad and not (p.ndim >= 2)
+    ]
+
+    return MuonOpt(
+        lr=lr,
+        wd=weight_decay,
+        muon_params=muon_params,
+        momentum=momentum,
+        adamw_params=adamw_params,
+        adamw_betas=adamw_betas,
+        adamw_eps=adamw_eps,
+    )
