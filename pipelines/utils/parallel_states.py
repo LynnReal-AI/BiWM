@@ -18,6 +18,8 @@ class CommState:
 
 
 nccl_state = CommState()
+# Backward-compatible public names used by the vendored HY15 communication code.
+nccl_info = nccl_state
 _SEQ_PARALLEL_FLAG = False
 
 
@@ -35,6 +37,11 @@ def setup_sequence_parallel_state(sequence_parallel_size):
 
 def fetch_sequence_parallel_state():
     return _SEQ_PARALLEL_FLAG
+
+
+# Keep both naming conventions available to backbone-specific training entries.
+initialize_sequence_parallel_state = setup_sequence_parallel_state
+get_sequence_parallel_state = fetch_sequence_parallel_state
 
 
 def setup_sequence_parallel_group(sequence_parallel_size):

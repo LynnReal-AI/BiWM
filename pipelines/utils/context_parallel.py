@@ -214,6 +214,40 @@ def cp_is_active() -> bool:
     return _cp_settings.enabled
 
 
+def apply_ulysses_attention(q, k, v, heads, attention_fn, mask=None):
+    """Run self-attention with Ulysses sequence/head all-to-all exchange."""
+    if not _cp_settings.enabled:
+        return attention_fn(q, k, v, heads, mask)
+
+    batch, local_sequence, hidden = q.shape
+    head_dim = hidden // heads
+    assert heads % _cp_settings.cp_size == 0, (
+        f"Number of heads ({heads}) must be divisible by cp_size ({_cp_settings.cp_size})"
+    )
+
+    def exchange(tensor, scatter_dim, gather_dim):
+        return _alltoall_single_op(
+            tensor,
+            scatter_dim=scatter_dim,
+            gather_dim=gather_dim,
+            group=_cp_settings.cp_group,
+        )
+
+    q = exchange(q.view(batch, local_sequence, heads, head_dim), 2, 1)
+    k = exchange(k.view(batch, local_sequence, heads, head_dim), 2, 1)
+    v = exchange(v.view(batch, local_sequence, heads, head_dim), 2, 1)
+    _, full_sequence, local_heads, _ = q.shape
+    q = q.reshape(batch, full_sequence, local_heads * head_dim)
+    k = k.reshape(batch, full_sequence, local_heads * head_dim)
+    v = v.reshape(batch, full_sequence, local_heads * head_dim)
+    if mask is not None and mask.shape[-1] == local_sequence:
+        mask = collect_sequence(mask, dim=-1)
+    output = attention_fn(q, k, v, local_heads, mask)
+    output = output.view(batch, full_sequence, local_heads, head_dim)
+    output = exchange(output, 1, 2)
+    return output.reshape(batch, local_sequence, hidden)
+
+
 def calc_cp_divisible_frames(frames: int, cp_size: int, temporal_stride: int = 8) -> int:
     """
     Compute a frame count divisible by both CP and temporal_stride.
