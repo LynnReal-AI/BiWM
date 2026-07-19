@@ -1,3 +1,5 @@
+"""Attention perturbation types used for spatiotemporal guidance."""
+
 from dataclasses import dataclass
 from enum import Enum
 

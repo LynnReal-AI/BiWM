@@ -1,3 +1,5 @@
+"""Rotary-position embedding utilities for LTX-Video 2.3."""
+
 import functools
 import math
 from enum import Enum
@@ -44,7 +46,6 @@ def apply_split_rotary_emb(
         旋转后的张量, shape 与 input_tensor 相同
     """
     needs_reshape = False
-    # print(input_tensor.shape, cos_freqs.shape, sin_freqs.shape)
 
     # 如果 input 维度不匹配，先 reshape 成 [batch_size, num_heads, num_tokens, head_dim]
     if input_tensor.ndim != 4 and cos_freqs.ndim == 4:
@@ -114,16 +115,6 @@ def generate_freq_grid_pytorch(
     start = 1 # 1
     end = theta # 10000.0
     n_elem = 2 * positional_embedding_max_pos_count # 3 * 2 = 6
-    # print("n_elem:",n_elem)
-    # print("start:",start)
-    # print("end:",end)
-    # print("theta:",theta)
-    # print("positional_embedding_max_pos_count:",positional_embedding_max_pos_count)
-    # print("positional_embedding_theta:",positional_embedding_theta)
-    # print("inner_dim:",inner_dim)
-    # print("positional_embedding_max_pos_count:",positional_embedding_max_pos_count)
-    # print("positional_embedding_theta:",positional_embedding_theta)
-    # print("inner_dim:",inner_dim)
     indices = theta ** (
         torch.linspace(
             math.log(start, theta),
@@ -132,10 +123,6 @@ def generate_freq_grid_pytorch(
             dtype=torch.float32,
         )
     )
-    # print("indices:",indices)
-    # print("indices.shape:",indices.shape)
-    # print("indices max:",indices.max())
-    # print("indices min:",indices.min())
     indices = indices.to(dtype=torch.float32)
 
     indices = indices * math.pi / 2 ## 输出结果也是单调的区间
@@ -324,7 +311,6 @@ def precompute_freqs_cis(
     #     W维度的682个频率值
     # ]
     # = 682 × 3 = 2046 维
-    # print("freqs:",freqs.shape)## 1, 25515, 2046
     # 使用 Split RoPE（官方 LTX-2 默认）
     expected_freqs = dim // 2  # 4096/2 = 2048
     current_freqs = freqs.shape[-1]  # 2046

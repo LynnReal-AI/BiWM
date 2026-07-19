@@ -53,7 +53,6 @@ exec > >(tee -a "${LOG_DIR}/node${NODE_RANK}_$(date +%Y%m%d_%H%M%S).log") 2>&1
 DMD_EXTRA_ARGS=()
 [[ ${DMD_TS_SCHEDULE:-1} == 0 ]] || DMD_EXTRA_ARGS+=(--dmd_ts_schedule)
 [[ ${DMD_EULER_ROLLOUT:-0} == 1 ]] && DMD_EXTRA_ARGS+=(--dmd_euler_rollout)
-[[ ${DMD_USE_GAN:-0} == 1 ]] && DMD_EXTRA_ARGS+=(--dmd_use_gan --dmd_gan_weight "${DMD_GAN_WEIGHT:-0.01}" --dmd_disc_lr "${DMD_DISC_LR:-1e-4}")
 
 export TOKENIZERS_PARALLELISM=false
 export PYTHONPATH="${ROOT_DIR}${PYTHONPATH:+:${PYTHONPATH}}"

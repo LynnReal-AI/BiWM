@@ -4,8 +4,8 @@
 """BiWM Stage 1 — camera-control fine-tuning (Wan training entry).
 
 Wan 2.2 5B training: video generation, discrete/continuous camera control,
-FSDP, bf16 mixed precision, Context Parallel, multi-resolution, optional
-adversarial loss, and partial fine-tuning (trainable_modules).
+FSDP, bf16 mixed precision, Context Parallel, multi-resolution, and partial
+fine-tuning (trainable_modules).
 
 Usage:
     torchrun --nproc_per_node 8 pipelines/wan/train_stage1.py \
@@ -395,25 +395,6 @@ def perform_single_training_step(
         else:
             velocity_target = (noise - video_latent).unsqueeze(0)
             loss = F.mse_loss(video_output.float(), velocity_target.float())
-
-        # === Adversarial Loss (optional) ===
-        adv_trainer = getattr(transformer, '_adv_trainer', None)
-        if adv_trainer is not None:
-            sigma_val = sigma.item()
-            if cond_end > 0:
-                noisy_slice = noisy_latent[:, cond_end:].unsqueeze(0)
-                fake_x0 = noisy_slice - sigma_val * output_for_loss
-                real_x0 = video_latent[:, cond_end:].unsqueeze(0)
-            else:
-                noisy_full = noisy_latent.unsqueeze(0)
-                fake_x0 = noisy_full - sigma_val * video_output
-                real_x0 = video_latent.unsqueeze(0)
-            d_loss = adv_trainer.discriminator_step(real_x0.detach(), fake_x0.detach())
-            g_loss = adv_trainer.generator_loss(fake_x0)
-            loss = loss + adv_trainer.gan_weight * g_loss
-            adv_trainer._last_d_loss = d_loss
-            adv_trainer._last_g_loss = g_loss.item()
-            log_main(f"[GAN] d={d_loss:.4f}, g={g_loss.item():.4f}")
 
         # === NaN check (global sync) ===
         local_nan = torch.tensor(
@@ -1029,22 +1010,6 @@ def run_training(args: argparse.Namespace) -> None:
     echo_on_main_rank(f"Steps per epoch: {steps_per_epoch}")
     echo_on_main_rank(f"Total train steps: {total_train_steps}")
 
-    # === Adversarial Loss ===
-    _gan_weight = getattr(args, 'gan_weight', 0.01)
-    if getattr(args, 'distill', False) and _gan_weight > 0:
-        from pipelines.wan.adversarial_loss import GanCoach
-        adv_trainer = GanCoach(
-            device=current_device,
-            fsdp_kwargs=None,
-            lr=getattr(args, 'discriminator_learning_rate', 1e-4),
-            gan_weight=_gan_weight,
-            latent_channels=wc.WAN_LATENT_CHANNEL_COUNT,
-        )
-        transformer._adv_trainer = adv_trainer
-        echo_on_main_rank(f"[Distill] Adversarial training: weight={_gan_weight}")
-    else:
-        transformer._adv_trainer = None
-
     # === Training loop ===
     global_step = resumed_step
     start_epoch = resumed_step // steps_per_epoch if resumed_step > 0 else 0
@@ -1370,11 +1335,6 @@ def parse_cli_options() -> argparse.Namespace:
 
     # ===== trainable_modules =====
     parser.add_argument("--trainable_modules", type=str, default=None)
-
-    # ===== Adversarial distillation =====
-    parser.add_argument("--distill", action="store_true", default=False)
-    parser.add_argument("--discriminator_learning_rate", type=float, default=1e-4)
-    parser.add_argument("--gan_weight", type=float, default=0.01)
 
     # ===== FSDP =====
     parser.add_argument("--use_cpu_offload", action="store_true")

@@ -482,35 +482,13 @@ def main(args):
     critic_opt = torch.optim.AdamW([p for p in fake_score.parameters() if p.requires_grad],
                                    lr=args.dmd_critic_lr, weight_decay=args.weight_decay)
 
-    # ---- GAN 判别器 (ProjectedDiscriminator, DINO 本地权重; real=真实视频 latent, fake=x0_gen) ----
-    #   plain 模块(不 FSDP), 跨 rank 手动 all-reduce 梯度; 独立 LR(--dmd_disc_lr)。HY15 latent=32ch。
-    _use_gan = bool(getattr(args, "dmd_use_gan", False))
-    _gan_w = float(getattr(args, "dmd_gan_weight", 0.0))
-    discriminator = disc_opt = None
-    _disc_params = []
-    if _use_gan:
-        from ADD.models.discriminator import ProjectedDiscriminator
-        from pipelines.common.gan_loss import (
-            discriminator_hinge_loss as _disc_loss_fn,
-            generator_hinge_loss as _gen_gan_fn,
-        )
-        # latent 通道 = VAE z_dim = transformer out_channels (HY15=32, ≠Wan48); 判别器 SubPixel 上采输入据此
-        _dcfg = _load_transformer_config(args.pretrained_model_path)
-        _lat_ch = int(_dcfg.get("out_channels", _dcfg.get("in_channels", 32)))
-        discriminator = ProjectedDiscriminator(c_dim=384, in_channels=_lat_ch).to(device)  # 内部 DINO frozen
-        _disc_params = [p for p in discriminator.parameters() if p.requires_grad]
-        _disc_lr = float(getattr(args, "dmd_disc_lr", 1e-4) or 1e-4)
-        disc_opt = torch.optim.AdamW(_disc_params, lr=_disc_lr, weight_decay=0.0, betas=(0.0, 0.999))
-        mprint(f"[DMD-GAN] ProjectedDiscriminator(in_ch={_lat_ch}) LR={_disc_lr:.1e} "
-               f"可训={sum(p.numel() for p in _disc_params)/1e6:.1f}M gan_weight={_gan_w}")
-
     # ---- 稳定化开关日志 ----
     _critic_warmup = int(getattr(args, "dmd_critic_warmup_steps", 0))
     _use_sft = float(getattr(args, "dmd_sft_weight", 0.0)) > 0.0
     _use_fkl = float(getattr(args, "dmd_fkl_weight", 0.0)) > 0.0
     _use_rfkl = float(getattr(args, "dmd_real_fkl_weight", 0.0)) > 0.0
     mprint(f"[DMD] 稳定化: critic_warmup={_critic_warmup} ts_schedule={getattr(args,'dmd_ts_schedule',False)} "
-           f"GAN={'开' if _use_gan else '关'} SFT={'开' if _use_sft else '关'} "
+           f"SFT={'开' if _use_sft else '关'} "
            f"teacherFKL={'开' if _use_fkl else '关'} realFKL={'开' if _use_rfkl else '关'}")
 
     # ---- 数据 ----
@@ -631,26 +609,9 @@ def main(args):
         critic_opt.step()
         _hb("critic 完成", _t)
 
-        # ===== 2) discriminator step (GAN; fake=critic 的 x0_c, real=真实视频 latent) =====
-        _dloss = float("nan")
-        if discriminator is not None:
-            _Fc = min(x0_c.shape[2], latent.shape[2])
-            disc_opt.zero_grad(set_to_none=True)
-            with torch.autocast("cuda", dtype=dtype):
-                dloss = _disc_loss_fn(discriminator, x0_c[:, :, :_Fc], latent[:, :, :_Fc])
-            dloss.backward()
-            if dist.is_initialized() and dist.get_world_size() > 1:   # plain 模块: 手动平均梯度
-                _ws = dist.get_world_size()
-                for _p in _disc_params:
-                    if _p.grad is not None:
-                        dist.all_reduce(_p.grad, op=dist.ReduceOp.SUM); _p.grad /= _ws
-            torch.nn.utils.clip_grad_norm_(_disc_params, args.max_grad_norm)
-            disc_opt.step()
-            _dloss = float(dloss.item())
-
-        # ===== 3) generator 更新【每 _ratio 步 1 次, warmup 后】—— 自己的 fresh rollout(带梯度), 对齐 Wan。
+        # ===== 2) generator 更新【每 _ratio 步 1 次, warmup 后】—— 自己的 fresh rollout(带梯度), 对齐 Wan。
         g_loss = None
-        _l_gan = _l_sft = _l_fkl = _l_rfkl = float("nan")
+        _l_sft = _l_fkl = _l_rfkl = float("nan")
         _is_gen_step = (step >= _critic_warmup) and (step % _ratio == 0)
         if _is_gen_step:
             _accum_first = (_gen_upd % _accum == 0)
@@ -679,12 +640,6 @@ def main(args):
                 fake_x0 = pred_x0_from_flow(noisy_g, v_fake, sgv)
                 kl_grad = compute_kl_gradient(fake_x0, real_x0, x0_gen.detach(), normalize_mode="global")
             g_loss = dmd_generator_loss(x0_gen, kl_grad)
-            # --- GAN 项 (梯度只回 generator) ---
-            if discriminator is not None:
-                with torch.autocast("cuda", dtype=dtype):
-                    _ganl = _gen_gan_fn(discriminator, x0_gen)
-                g_loss = g_loss + _gan_w * _ganl.to(g_loss.dtype)
-                _l_gan = float(_ganl.detach())
             # --- SFT / forward-KL 锚定 (用完整真实视频 latent, 与动态 rollout 解耦) ---
             if _use_sft:
                 _sft = _hy15_sft_loss(generator, latent, cond, cc, args, device)
@@ -711,7 +666,6 @@ def main(args):
             _gmsg = (f"g_loss={g_loss.item():.4f}" if g_loss is not None
                      else f"gen=(critic warmup {step}/{_critic_warmup})")
             _ex = ""
-            if discriminator is not None: _ex += f" disc={_dloss:.4f} gan={_l_gan:.4f}"
             if _use_sft:  _ex += f" sft={_l_sft:.4f}"
             if _use_fkl:  _ex += f" fkl={_l_fkl:.4f}"
             if _use_rfkl: _ex += f" rfkl={_l_rfkl:.4f}"
@@ -853,10 +807,6 @@ def parse_args():
                    help="rollout 桥接用 euler 确定性步(x+=v·dt)而非 cm 重加噪 —— 临时关 cm(诊断 cm 是否拖累训练)")
     p.add_argument("--dmd_min_step", type=float, default=0.0, help="critic/DMD 加噪 sigma 下限(0~1, shift前语义同Wan)")
     p.add_argument("--dmd_max_step", type=float, default=1.0, help="critic/DMD 加噪 sigma 上限(0~1)")
-    # GAN (ProjectedDiscriminator, DINO ViT-S 本地权重; real=真实视频 latent, fake=generator x0)
-    p.add_argument("--dmd_use_gan", action="store_true", default=False, help="开 ProjectedDiscriminator GAN loss")
-    p.add_argument("--dmd_gan_weight", type=float, default=0.01, help="generator GAN loss 权重")
-    p.add_argument("--dmd_disc_lr", type=float, default=1e-4, help="判别器独立 LR (不要错用 critic_lr)")
     # SFT (完整真实视频低σ velocity MLE, 强数据锚定抗塌缩)
     p.add_argument("--dmd_sft_weight", type=float, default=0.0, help="SFT 权重, 0=关")
     p.add_argument("--dmd_sft_sigma_max", type=float, default=0.5, help="SFT 仅在低σ∈shift(U[0,此值])施加")

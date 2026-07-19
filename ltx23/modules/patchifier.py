@@ -1,9 +1,5 @@
-"""
-LTX-2 Patchifier Module (WAN-style)
-视频和音频的 patchify/unpatchify 工具
-"""
+"""Video latent patchification and coordinate conversion for LTX-Video 2.3."""
 import math
-from dataclasses import dataclass
 from typing import NamedTuple, Optional, Tuple
 
 import einops
@@ -51,64 +47,6 @@ class VideoLatentShape(NamedTuple):
 
     def mask_shape(self) -> "VideoLatentShape":
         return self._replace(channels=1)
-
-
-class AudioLatentShape(NamedTuple):
-    """音频 latent 形状: (batch, channels, frames, mel_bins)"""
-    batch: int
-    channels: int
-    frames: int
-    mel_bins: int
-
-    def to_torch_shape(self) -> torch.Size:
-        return torch.Size([self.batch, self.channels, self.frames, self.mel_bins])
-
-    def mask_shape(self) -> "AudioLatentShape":
-        return self._replace(channels=1, mel_bins=1)
-
-    @staticmethod
-    def from_torch_shape(shape: torch.Size) -> "AudioLatentShape":
-        return AudioLatentShape(
-            batch=shape[0],
-            channels=shape[1],
-            frames=shape[2],
-            mel_bins=shape[3],
-        )
-
-    @staticmethod
-    def from_duration(
-        batch: int,
-        duration: float,
-        channels: int = 8,
-        mel_bins: int = 16,
-        sample_rate: int = 16000,
-        hop_length: int = 160,
-        audio_latent_downsample_factor: int = 4,
-    ) -> "AudioLatentShape":
-        latents_per_second = float(sample_rate) / float(hop_length) / float(audio_latent_downsample_factor)
-        return AudioLatentShape(
-            batch=batch,
-            channels=channels,
-            frames=round(duration * latents_per_second),
-            mel_bins=mel_bins,
-        )
-
-
-@dataclass(frozen=True)
-class LatentState:
-    """扩散过程中的 latent 状态"""
-    latent: torch.Tensor
-    denoise_mask: torch.Tensor
-    positions: torch.Tensor
-    clean_latent: torch.Tensor
-
-    def clone(self) -> "LatentState":
-        return LatentState(
-            latent=self.latent.clone(),
-            denoise_mask=self.denoise_mask.clone(),
-            positions=self.positions.clone(),
-            clean_latent=self.clean_latent.clone(),
-        )
 
 
 # =============================================================================
@@ -193,99 +131,6 @@ class VideoLatentPatchifier:
             bounds=2,
         )
         return latent_coords
-
-
-# =============================================================================
-# Audio Patchifier
-# =============================================================================
-
-class AudioPatchifier:
-    """音频 latent patchifier"""
-
-    def __init__(
-        self,
-        patch_size: int = 16,
-        sample_rate: int = 16000,
-        hop_length: int = 160,
-        audio_latent_downsample_factor: int = 4,
-        is_causal: bool = True,
-        shift: int = 0,
-    ):
-        self.hop_length = hop_length
-        self.sample_rate = sample_rate
-        self.audio_latent_downsample_factor = audio_latent_downsample_factor
-        self.is_causal = is_causal
-        self.shift = shift
-        self._patch_size = (1, patch_size, patch_size)
-
-    @property
-    def patch_size(self) -> Tuple[int, int, int]:
-        return self._patch_size
-
-    def get_token_count(self, tgt_shape: AudioLatentShape) -> int:
-        return tgt_shape.frames
-
-    def _get_audio_latent_time_in_sec(
-        self,
-        start_latent: int,
-        end_latent: int,
-        dtype: torch.dtype,
-        device: Optional[torch.device] = None,
-    ) -> torch.Tensor:
-        if device is None:
-            device = torch.device("cpu")
-
-        audio_latent_frame = torch.arange(start_latent, end_latent, dtype=dtype, device=device)
-        audio_mel_frame = audio_latent_frame * self.audio_latent_downsample_factor
-
-        if self.is_causal:
-            causal_offset = 1
-            audio_mel_frame = (audio_mel_frame + causal_offset - self.audio_latent_downsample_factor).clip(min=0)
-
-        return audio_mel_frame * self.hop_length / self.sample_rate
-
-    def _compute_audio_timings(
-        self,
-        batch_size: int,
-        num_steps: int,
-        device: Optional[torch.device] = None,
-    ) -> torch.Tensor:
-        resolved_device = device or torch.device("cpu")
-
-        start_timings = self._get_audio_latent_time_in_sec(
-            self.shift, num_steps + self.shift, torch.float32, resolved_device
-        )
-        start_timings = start_timings.unsqueeze(0).expand(batch_size, -1).unsqueeze(1)
-
-        end_timings = self._get_audio_latent_time_in_sec(
-            self.shift + 1, num_steps + self.shift + 1, torch.float32, resolved_device
-        )
-        end_timings = end_timings.unsqueeze(0).expand(batch_size, -1).unsqueeze(1)
-
-        return torch.stack([start_timings, end_timings], dim=-1)
-
-    def patchify(self, audio_latents: torch.Tensor) -> torch.Tensor:
-        """将 [B, C, T, F] 转换为 [B, T, C*F]"""
-        audio_latents = einops.rearrange(audio_latents, "b c t f -> b t (c f)")
-        return audio_latents
-
-    def unpatchify(self, audio_latents: torch.Tensor, output_shape: AudioLatentShape) -> torch.Tensor:
-        """将 [B, T, C*F] 转换回 [B, C, T, F]"""
-        audio_latents = einops.rearrange(
-            audio_latents,
-            "b t (c f) -> b c t f",
-            c=output_shape.channels,
-            f=output_shape.mel_bins,
-        )
-        return audio_latents
-
-    def get_patch_grid_bounds(
-        self,
-        output_shape: AudioLatentShape,
-        device: Optional[torch.device] = None,
-    ) -> torch.Tensor:
-        """获取音频 patch 的时间边界 [batch, 1, time_steps, 2]"""
-        return self._compute_audio_timings(output_shape.batch, output_shape.frames, device)
 
 
 # =============================================================================

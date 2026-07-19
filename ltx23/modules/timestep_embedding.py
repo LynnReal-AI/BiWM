@@ -1,3 +1,5 @@
+"""Sinusoidal and learned timestep embeddings for LTX-Video 2.3."""
+
 import math
 
 import torch

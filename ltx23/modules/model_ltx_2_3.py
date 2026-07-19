@@ -1,14 +1,5 @@
 # Copyright 2024-2025 LTX-2.3 Refactored (WAN-style)
-"""
-LTX-2.3 Diffusion Model following WAN style with Audio-Video support.
-Key changes from LTX-2.0:
-  - Gated attention (per-head gating with 2*sigmoid)
-  - Cross-attention AdaLN (scale/shift/gate for CA + prompt AdaLN)
-  - Self-attention mask support
-  - Caption projection externalized
-  - Modality.sigma for cross-attention timestep
-"""
-import math
+"""LTX-Video 2.3 transformer used by the BiWM training pipelines."""
 from dataclasses import dataclass
 from enum import Enum
 
@@ -26,7 +17,6 @@ from pipelines.utils.context_parallel import (
     cp_is_active as is_cp_enabled,
     fetch_cp_world_size as get_cp_world_size,
     disperse_sequence as scatter_sequence,
-    collect_sequence as gather_sequence,
     collect_for_loss as gather_for_loss,
     apply_ulysses_attention,
     pad_for_cp_divisible as pad_to_cp_divisible,
@@ -431,7 +421,6 @@ class LTX23AttentionBlock(torch.nn.Module):
         rope_type: LTXRopeType = LTXRopeType.SPLIT,
         norm_eps: float = 1e-6,
         attention_function: AttentionFunction | AttentionCallable = AttentionFunction.DEFAULT,
-        enable_camera_injection: bool = False,
         enable_sparse_attention: bool = False,
         sparse_block_size: tuple = (4, 4, 4),
         sparse_ratio: float = 0.125,
@@ -439,7 +428,6 @@ class LTX23AttentionBlock(torch.nn.Module):
         super().__init__()
 
         self.idx = idx
-        self.enable_camera_injection = enable_camera_injection
         self.cross_attention_adaln = video.cross_attention_adaln if video is not None else False
 
         self.attn1 = LTX23SelfAttention(
@@ -476,7 +464,6 @@ class LTX23AttentionBlock(torch.nn.Module):
             self.prompt_scale_shift_table = torch.nn.Parameter(torch.empty(2, video.dim))
 
         self.norm_eps = norm_eps
-        # scale_shift camera injection 已移除，离散 action 通过 forward 参数注入
 
     def get_ada_values(
         self, scale_shift_table: torch.Tensor, batch_size: int, timestep: torch.Tensor, indices: slice
@@ -517,8 +504,6 @@ class LTX23AttentionBlock(torch.nn.Module):
         context: torch.Tensor | None = None,
         context_mask: torch.Tensor | None = None,
         perturbations: BatchedPerturbationConfig | None = None,
-        plucker_emb: Optional[torch.Tensor] = None,
-        action_features: Optional[torch.Tensor] = None,
         video_shape: tuple = None,
         prompt_timestep: Optional[torch.Tensor] = None,
         self_attention_mask: Optional[torch.Tensor] = None,
@@ -560,8 +545,6 @@ class LTX23AttentionBlock(torch.nn.Module):
         )
         del vgate_msa, norm_vx, v_mask
 
-        # (离散 action 已移至 timestep_emb 注入，不在 block 内)
-
         # Cross-attention (with optional AdaLN in 2.3)
         # 当 per_frame_context 存在时，使用逐帧 cross-attention (cam_text 模式)
         if per_frame_context is not None and tokens_per_frame is not None:
@@ -602,12 +585,7 @@ class LTX23AttentionBlock(torch.nn.Module):
                 ca_out = self.attn2(attn_input, context=encoder_hidden_states, mask=None) * gate_q
                 ca_out = ca_out.reshape(B, T * tpf, -1)
             else:
-                raise ValueError
-                # 无 AdaLN，简单 cross-attention
-                x_norm = rms_norm(x, eps=self.norm_eps)
-                x_frames = x_norm[:, :T * tpf, :].reshape(B * T, tpf, -1)
-                ca_out = self.attn2(x_frames, context=per_frame_context, mask=None)
-                ca_out = ca_out.reshape(B, T * tpf, -1)
+                raise ValueError("Per-frame camera text requires cross-attention AdaLN")
 
             x = x + ca_out
         else:
@@ -670,7 +648,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
                  in_dim=128,
                  dim=4096,
                  ffn_dim=16384,
-                 freq_dim=256,
                  text_dim=3840,
                  out_dim=128,
                  num_heads=32,
@@ -678,16 +655,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
                  qk_norm=True,
                  cross_attn_norm=True,
                  eps=1e-6,
-                 # Camera control params
-                 enable_camera_control: bool = False,
-                 camera_injection_mode: str = "scale_shift",
-                 camera_split_plucker: bool = False,
-                 num_actions: int = 81,
-                 plucker_hidden_dim: int = 64,
-                 continuous_camera_dropout_prob: float = 0.1,
-                 discrete_camera_dropout_prob: float = 0.1,
-                 enable_continuous_camera: bool = True,
-                 enable_discrete_camera: bool = True,
                  # Sparse Attention params
                  enable_sparse_attention: bool = False,
                  sparse_block_size: tuple = (4, 4, 4),
@@ -704,7 +671,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
         self.in_dim = in_dim
         self.dim = dim
         self.ffn_dim = ffn_dim
-        self.freq_dim = freq_dim
         self.text_dim = text_dim
         self.out_dim = out_dim
         self.num_heads = num_heads
@@ -765,75 +731,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
         self.sparse_ratio_train = sparse_ratio_train
         self.sparse_ratio_inference = sparse_ratio_inference
 
-        # Camera control modules
-        self.enable_camera_control = enable_camera_control
-        self.camera_injection_mode = camera_injection_mode
-        self.camera_split_plucker = camera_split_plucker
-        self.enable_continuous_camera = enable_continuous_camera
-        self.enable_discrete_camera = enable_discrete_camera
-
-        if enable_camera_control:
-            from ltx23.modules.camera_control import (
-                WanCameraAdapter, SimplePatchCameraAdapter,
-                VelocityActionEmbedder, DiscreteActionEmbedder81,
-                CameraControlDropout, DiscreteActionDropout,
-            )
-            print(f"[LTX23-CameraControl] Enabled: mode={camera_injection_mode}, "
-                  f"continuous={enable_continuous_camera}, discrete={enable_discrete_camera}")
-
-            # [已禁用] 离散 action embedder (timestep_emb 注入) — 已改用 cam_text cross-attn
-            # 离散相机信息现在通过 precompute_cam_text_embeddings + per-frame cross-attention 注入
-            # if enable_discrete_camera:
-            #     import os
-            #     _adaln_out_dim = _adaln_coeff * self.inner_dim
-            #     _discrete_mode = os.environ.get('LTX_DISCRETE_MODE', '81cls')
-            #     if _discrete_mode == '81cls':
-            #         self.action_embedder = DiscreteActionEmbedder81(
-            #             dim=self.inner_dim, freq_dim=freq_dim, num_actions=num_actions,
-            #         )
-            #         self.discrete_action_proj = nn.Linear(self.inner_dim, _adaln_out_dim, bias=True)
-            #         nn.init.zeros_(self.discrete_action_proj.weight)
-            #         nn.init.zeros_(self.discrete_action_proj.bias)
-            #     else:
-            #         self.action_embedder = VelocityActionEmbedder(
-            #             dim=self.inner_dim, output_dim=_adaln_out_dim,
-            #             freq_dim_per_axis=32,
-            #         )
-            #     self._discrete_mode = _discrete_mode
-            #     self.discrete_action_dropout = DiscreteActionDropout(discrete_camera_dropout_prob)
-            #     self._discrete_cross_norm_scale = float(os.environ.get('LTX_DISCRETE_CROSS_NORM_SCALE', '0.0'))
-            #     self._discrete_warmup_steps = int(os.environ.get('LTX_DISCRETE_CAMERA_WARMUP_STEPS', '0'))
-            if enable_discrete_camera:
-                print(f"[LTX23-CameraControl] 离散相机: 使用 cam_text cross-attn 模式 (不创建 action_embedder)")
-
-            if enable_continuous_camera:
-                self.camera_dropout = CameraControlDropout(continuous_camera_dropout_prob)
-                import os
-                _disable_output_scale = os.environ.get('LTX_DISABLE_OUTPUT_SCALE', '0') == '1'
-                _output_scale_init = float(os.environ.get('LTX_CAMERA_OUTPUT_SCALE_INIT', '0.0'))
-                _zero_init = os.environ.get('LTX_CAMERA_ZERO_INIT', '1') == '1'
-                _adapter_kwargs = dict(in_channels=6, out_dim=self.inner_dim,
-                                       vae_temporal_stride=8, split_plucker=camera_split_plucker,
-                                       output_scale_init=_output_scale_init,
-                                       disable_output_scale=_disable_output_scale,
-                                       zero_init=_zero_init)
-                _use_simple_adapter = os.environ.get('LTX_CAMERA_SIMPLE_ADAPTER', '0') == '1'
-                # Additive mode only (scale_shift 已移除)
-                self.additive_camera_adapter = WanCameraAdapter(**_adapter_kwargs)
-
-                # Cross Normalization (ControlNeXt): align camera features to hidden distribution
-                self._camera_use_cross_norm = os.environ.get('LTX_CAMERA_USE_CROSS_NORM', '0') == '1'
-                self._cross_norm_scale = float(os.environ.get('LTX_CROSS_NORM_SCALE', '0.2'))
-                if self._camera_use_cross_norm:
-                    print(f"[CameraControl] Cross Normalization enabled: scale={self._cross_norm_scale}, per-token dim=-1")
-
-                # Camera warmup: linearly scale camera features from min_scale→1 over N steps
-                self._camera_warmup_steps = int(os.environ.get('LTX_CAMERA_WARMUP_STEPS', '0'))
-                self._camera_warmup_min_scale = float(os.environ.get('LTX_CAMERA_WARMUP_MIN_SCALE', '0.0'))
-                if self._camera_warmup_steps > 0:
-                    print(f"[CameraWarmup] Enabled: warmup over {self._camera_warmup_steps} steps, "
-                          f"min_scale={self._camera_warmup_min_scale}")
-
         # Transformer blocks
         video_config = (
             TransformerConfig(
@@ -848,8 +745,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
             else None
         )
 
-        _enable_block_camera = (enable_camera_control and enable_continuous_camera
-                                and camera_injection_mode == "scale_shift")
         self.blocks = torch.nn.ModuleList(
             [
                 LTX23AttentionBlock(
@@ -858,7 +753,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
                     rope_type=self.rope_type,
                     norm_eps=norm_eps,
                     attention_function=attention_type,
-                    enable_camera_injection=False,  # scale_shift 已移除，离散通过 action_features 参数注入
                     enable_sparse_attention=enable_sparse_attention,
                     sparse_block_size=sparse_block_size,
                     sparse_ratio=self.sparse_ratio,
@@ -868,18 +762,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
         )
 
         self.gradient_checkpointing = False
-
-        # [已禁用] 离散 cross_norm scale + warmup — 已改用 cam_text cross-attn
-        # if enable_camera_control and enable_discrete_camera:
-        #     import os as _os_blk
-        #     _dcn_s = float(_os_blk.environ.get('LTX_DISCRETE_CROSS_NORM_SCALE', '0.0'))
-        #     _dcn_w = int(_os_blk.environ.get('LTX_DISCRETE_CAMERA_WARMUP_STEPS', '0'))
-        #     _n_blocks = len(self.blocks)
-        #     for blk in self.blocks:
-        #         blk._action_cross_norm_scale = _dcn_s
-        #         blk._action_warmup_steps = _dcn_w
-        #         blk._action_warmup_cnt = 0
-        #         blk._total_blocks = _n_blocks
 
     def _set_gradient_checkpointing(self, module, value=False):
         self.gradient_checkpointing = value
@@ -944,14 +826,10 @@ class LTX23Model(ModelMixin, ConfigMixin):
 
     def forward(self, x, t, context, seq_len,
                 action_labels: Optional[torch.Tensor] = None,
-                action_vectors: Optional[torch.Tensor] = None,
-                plucker_coords: Optional[torch.Tensor] = None,
                 perturbations: "BatchedPerturbationConfig | None" = None,
                 **kwargs):
         return self._forward(x, t, context, seq_len,
                              action_labels=action_labels,
-                             action_vectors=action_vectors,
-                             plucker_coords=plucker_coords,
                              cond_latent_frames=kwargs.get('cond_latent_frames', 0),
                              perturbations=perturbations,
                              **{k: v for k, v in kwargs.items() if k != 'cond_latent_frames'})
@@ -960,8 +838,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
         self, x, t, context, seq_len,
         fps: float = 25.0,
         action_labels: Optional[torch.Tensor] = None,
-        action_vectors: Optional[torch.Tensor] = None,
-        plucker_coords: Optional[torch.Tensor] = None,
         cond_latent_frames: int = 0,
         perturbations: "BatchedPerturbationConfig | None" = None,
         **kwargs,
@@ -1006,13 +882,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
         if not hasattr(self, '_ts_print_count'):
             self._ts_print_count = 0
         # [torch.compile] print 已注释，避免 dynamo trace 报错
-        # if self._ts_print_count < 2:
-        #     sigma_gen = timesteps[0, -1, 0].item() if num_tokens > 0 else 0
-        #     sigma_cond = timesteps[0, 0, 0].item() if num_tokens > 0 else 0
-        #     print(f"[LTX23.forward] sigma_cond={sigma_cond:.4f}, sigma_gen={sigma_gen:.4f}, "
-        #           f"cond_frames={cond_latent_frames}, x={x_stacked.shape}")
-        #     self._ts_print_count += 1
-
         # Positions with FPS normalization
         scale_factors = SpatioTemporalScaleFactors(time=8, width=32, height=32)
         latent_coords = patchifier.get_patch_grid_bounds(output_shape=target_shape, device=device)
@@ -1082,40 +951,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
                 )
                 prompt_timestep = single_prompt_emb.unsqueeze(0).expand(batch_size, 1, -1)
 
-        # [已禁用] Discrete action 注入到 timestep_emb — 已改用 cam_text cross-attn
-        # 离散相机信息现在通过 per-frame text cross-attention 注入，不再叠加到 timestep_emb
-        # if (getattr(self, 'enable_camera_control', False) and
-        #         getattr(self, 'enable_discrete_camera', False)):
-        #     _dm = getattr(self, '_discrete_mode', '81cls')
-        #     _action_input = action_labels if _dm == '81cls' else action_vectors
-        #     if _action_input is not None:
-        #         action_emb = self.action_embedder(_action_input)
-        #         if action_emb.dim() == 3:
-        #             action_emb = action_emb.repeat_interleave(tokens_per_frame, dim=1)
-        #             if action_emb.shape[1] != num_tokens:
-        #                 action_emb = action_emb.permute(0, 2, 1)
-        #                 action_emb = F.interpolate(action_emb.float(), size=num_tokens, mode='linear', align_corners=True).to(dtype=action_emb.dtype)
-        #                 action_emb = action_emb.permute(0, 2, 1)
-        #         if _dm == '81cls' and hasattr(self, 'discrete_action_proj'):
-        #             action_emb = self.discrete_action_proj(action_emb)
-        #         if not hasattr(self, '_discrete_diag_cnt'):
-        #             self._discrete_diag_cnt = 0
-        #         self._discrete_diag_cnt += 1
-        #         _action_is_dropped = False
-        #         if self.training and hasattr(self, 'discrete_action_dropout'):
-        #             from ltx23.modules.camera_control import distributed_safe_dropout_decision
-        #             _drop_prob = self.discrete_action_dropout.dropout_prob
-        #             _action_is_dropped = distributed_safe_dropout_decision(_drop_prob, action_emb.device)
-        #         if not _action_is_dropped:
-        #             timestep_emb = timestep_emb + action_emb
-        #     else:
-        #         if _dm == '81cls':
-        #             _dummy = self.action_embedder(torch.zeros(1, 1, device=device, dtype=torch.long))
-        #             if hasattr(self, 'discrete_action_proj'):
-        #                 _ = self.discrete_action_proj(_dummy)
-        #         else:
-        #             _ = self.action_embedder(torch.zeros(1, 1, 13, device=device, dtype=dtype))
-
         # Caption projection (None for 22B where projection is in text encoder)
         if self.caption_projection is not None:
             context_proj = self.caption_projection(context_tensor)
@@ -1132,15 +967,7 @@ class LTX23Model(ModelMixin, ConfigMixin):
                          and action_labels is not None
                          and hasattr(self, '_cam_text_raw'))
 
-        # 当 cam_text 模式启用时，跳过离散 action 到 timestep_emb 的注入
-        # (已在上面 Discrete action 段处理，但如果 cam_text 启用则不应叠加)
-        _skip_discrete_emb = _use_cam_text
-
         if _use_cam_text:
-            _step = getattr(self, '_current_train_step', 0)
-            if _step % 1 == 0:
-                print("！！！！使用双向离散文本控制 (LTX23)")
-
             T = num_frames  # latent frames
             H_p = height    # latent height
             W_p = width     # latent width
@@ -1157,14 +984,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
 
             text_dim_raw = self._cam_text_raw[0].shape[1]  # text_dim (e.g. 4096)
             S_target = context_tensor.shape[1]  # max context length
-
-            # Debug: 打印拼接前的 shape
-            # if _step <= 3 or _step % 50 == 0:
-            _sample_aid = al[0, 0].item()
-            _cam_shape = self._cam_text_raw[_sample_aid].shape
-            _cap_shape = context_tensor[0].shape
-            print(f"[CamText-Debug] step={_step}: cam_text[{_sample_aid}] shape={list(_cam_shape)}, "
-                    f"caption shape={list(_cap_shape)}, S_target={S_target}")
 
             # 确保 context_tensor 是 3D [B, S, D]（validation 时可能多一个 batch dim）
             if context_tensor.dim() == 4:
@@ -1188,79 +1007,12 @@ class LTX23Model(ModelMixin, ConfigMixin):
 
             per_frame_raw = torch.stack(per_frame_raw)  # [B*T, S_target, text_dim]
 
-            # Debug: 打印拼接后的 shape
-            if _step <= 3 or _step % 50 == 0:
-                print(f"[CamText-Debug] step={_step}: per_frame_raw (拼接后) shape={list(per_frame_raw.shape)} "
-                      f"(B*T={batch_size}*{T}={batch_size*T})")
-
             # cam + caption 一起过 caption_projection 投影到 hidden_dim
             if self.caption_projection is not None:
                 per_frame_context = self.caption_projection(per_frame_raw)
                 per_frame_context = per_frame_context.view(batch_size * T, -1, hidden.shape[-1])
             else:
                 per_frame_context = per_frame_raw.view(batch_size * T, -1, hidden.shape[-1])
-
-            # Debug: 打印投影后的 shape
-            if _step <= 3 or _step % 50 == 0:
-                print(f"[CamText-Debug] step={_step}: per_frame_context (投影后) shape={list(per_frame_context.shape)}")
-
-        # ===== Camera injection: additive to hidden (RELIC-style) =====
-        plucker_emb = None  # scale_shift 已移除，保留兼容变量
-
-        if getattr(self, 'enable_camera_control', False):
-            if not hasattr(self, '_cam_diag_cnt'):
-                self._cam_diag_cnt = 0
-
-            # --- 连续相机 (Plucker → WanCameraAdapter → additive to hidden) ---
-            if getattr(self, 'enable_continuous_camera', False):
-                if plucker_coords is not None:
-                    cam_features = self.additive_camera_adapter(plucker_coords, num_frames, height, width)
-                    if self.training and getattr(self, '_enable_cam_aux', False):
-                        self._cam_features_for_aux = cam_features
-                        self._cam_aux_shape = (num_frames, height, width)
-                    if cam_features.shape[1] != num_tokens:
-                        cam_features = cam_features.permute(0, 2, 1)
-                        cam_features = F.interpolate(cam_features.float(), size=num_tokens,
-                                                     mode='linear', align_corners=True).to(dtype=cam_features.dtype)
-                        cam_features = cam_features.permute(0, 2, 1)
-
-                    self._cam_diag_cnt += 1
-                    _ws = getattr(self, '_camera_warmup_steps', 0)
-                    _wmin = getattr(self, '_camera_warmup_min_scale', 0.0)
-                    # 使用训练 step 计算 warmup（而非 forward 调用次数，避免 grad ckpt 双重计数）
-                    _warmup_progress = getattr(self, '_current_train_step', self._cam_diag_cnt)
-                    _wscale = min(1.0, _wmin + (1.0 - _wmin) * _warmup_progress / _ws) if _ws > 0 else 1.0
-                    if getattr(self, '_camera_use_cross_norm', False):
-                        _mh = hidden.detach().mean(dim=-1, keepdim=True)
-                        _sh = hidden.detach().std(dim=-1, keepdim=True)
-                        _mc = cam_features.mean(dim=-1, keepdim=True)
-                        _sc = cam_features.std(dim=-1, keepdim=True)
-                        cam_features = (cam_features - _mc) * (_sh / (_sc + 1e-12)) + _mh
-                        cam_features = cam_features * (self._cross_norm_scale * _wscale)
-                    else:
-                        cam_features = cam_features * _wscale
-                    cam_features = self.camera_dropout(cam_features)
-
-                    if _warmup_progress <= 5 or _warmup_progress % 20 == 0:
-                        _h = hidden.detach().abs().mean().item()
-                        _c = cam_features.detach().abs().mean().item()
-                        _tag = "cross_norm" if getattr(self, '_camera_use_cross_norm', False) else "direct"
-                        print(f"[CamDiag] step={_warmup_progress} additive({_tag}): "
-                              f"hidden_abs={_h:.6f}, cam_abs={_c:.6f}, "
-                              f"cam/hidden={_c/max(_h,1e-12):.6f}, warmup={_wscale:.4f}, "
-                              f"cn_scale={self._cross_norm_scale}")
-
-                    hidden = hidden + cam_features
-                    del cam_features
-                else:
-                    dummy_pl = torch.zeros(1, 6, 1, 32, 32, device=device, dtype=dtype)
-                    _ = self.additive_camera_adapter(dummy_pl, 1, 1, 1)
-                    _ = self.camera_dropout(torch.zeros(1, 1, self.inner_dim, device=device, dtype=dtype))
-                    if getattr(self, '_enable_cam_aux', False):
-                        self._cam_features_for_aux = None
-                        self._cam_aux_shape = None
-
-            # 离散动作注入已移至 per-block (在 block loop 中每层 cross_norm + add)
 
         # Dummy forward for prompt_adaln_single FSDP sync
         if self.prompt_adaln_single is not None and prompt_timestep is None:
@@ -1297,8 +1049,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
             freqs_cos, _ = pad_to_cp_divisible(freqs[0], dim=2)
             freqs_sin, _ = pad_to_cp_divisible(freqs[1], dim=2)
             freqs = (freqs_cos, freqs_sin)
-            if plucker_emb is not None:
-                plucker_emb, _ = pad_to_cp_divisible(plucker_emb, dim=1)
             if _cp_debug:
                 print(f"[CP-Debug][rank={_rank}] pad 完成, hidden={hidden.shape}", flush=True)
             hidden = scatter_sequence(hidden, dim=1)
@@ -1308,8 +1058,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
             if prompt_timestep is not None:
                 prompt_timestep = scatter_sequence(prompt_timestep, dim=1)
             freqs = (scatter_sequence(freqs[0], dim=2), scatter_sequence(freqs[1], dim=2))
-            if plucker_emb is not None:
-                plucker_emb = scatter_sequence(plucker_emb, dim=1)
             if video_shape is not None:
                 T_vs, H_vs, W_vs = video_shape
                 padded_seq = hidden.shape[1] * cp_size
@@ -1333,8 +1081,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
                 "context": context_proj,
                 "context_mask": None,
                 "perturbations": perturbations,
-                "plucker_emb": plucker_emb,
-                "action_features": None,  # 离散已移至 timestep_emb
                 "video_shape": video_shape,
                 "prompt_timestep": prompt_timestep,
                 "self_attention_mask": None,

@@ -1,32 +1,5 @@
-# BiWM LTX-Video 2.3 Stage 2 DMD training entry.
-# =============================================================================
-# LTX-Video 2.3 (LTX23) stage2 DMD 蒸馏 —— DMD 算法【孪生 dmd_wan.py】, 模型用 LTX23Model
-# =============================================================================
-# 本文件 DMD2 算法逻辑镜像 fastvideo/dmd_wan.py: compute_dmd_loss / compute_critic_loss /
-# generator rollout(_outer_grad self-forcing) / critic-gen 更新节奏 / 优化器 / 验证 /
-# checkpoint / 分布式 / argparse。模型类用 ltx23_model.LTX23Model, 走三处 LTX 专属适配:
-#   1) 模型加载: build_ltx23_transformer(LTX23Model, 从 .safetensors metadata 或 ckpt 目录构建);
-#   2) transformer forward: LTX 原生 model(x_list, t, context, seq_len, cond_latent_frames,
-#      action_labels, fps); 返回 velocity [B,C,F,H,W]。
-#   3) i2v/AR 条件机制: 不是 concat 通道, 而是 forward 传 cond_latent_frames=N —— 模型内部把前 N
-#      个 latent 帧的 timestep 置 σ=0(clean 历史/首帧)。history mode 仅 'none'(干净历史作 clean 前缀)。
-#
-# 相机控制: 【逐 latent 帧离散 cam-text via action_labels】(与 Wan2.2-5B/stage1 一致, 不再拼 prompt):
-#   - prompt 恒为 caption-ONLY(make_live_batch caption_only=True); 相机由逐帧 action_labels 经
-#     LTX23Model 内置 precompute_cam_text_embeddings 注入 cross-attn。
-#   - 三模型(generator/fake_score/real_score) 各在 FSDP wrap 【之前】调一次
-#     precompute_cam_text_embeddings(make_cam_text_encode_fn(...)), 把 81 类相机文本编码存 _cam_text_raw。
-#   - CFG: cond=caption+逐帧相机(action_labels=full_action_labels); uncond=neg caption(action_labels=None)。
-#
-# 三模型(均为 LTX23Model):
-#   - generator (student, 可训)   : 从 stage1 ckpt 初始化, 4-step 逐 chunk 自回归去噪
-#   - fake_score (critic, 可训)    : 学 generator 当前分布, 给 fake score
-#   - real_score (teacher, 冻结)   : 双向教师, 给 real score (CFG, real_guidance_scale)
-# DMD2: KL 梯度 grad=(fake_x0-real_x0) 归一化 → generator loss; critic 对 generator 样本做去噪。
-#
-# 复用 stage1: build/config/数据集/cond 拼装/VAE/文本编码 都从 pipelines.ltx23.train_stage1 import (DRY)。
-# ⚠️ 依赖 stage1 ckpt; 本文件按"先写对、后跑通"约定写, 权重/数据齐了再 DLC 调。
-# =============================================================================
+"""Stage 2 DMD distillation for the LTX-Video 2.3 backbone."""
+
 import argparse
 import gc
 import os
@@ -65,15 +38,9 @@ def shift_sigma(u, shift):
     return shift * u / (1.0 + (shift - 1.0) * u)
 
 
-# =============================================================================
-# 构建一个原生 LTX2Model, 从 stage1 ckpt(目录) 或 base(.safetensors) 加载
-# =============================================================================
 def build_dit_from_ckpt(ckpt_path, pretrained_fallback, device, dtype, trainable,
                         camera_mode="camtext", grad_ckpt=False):
-    """构建 LTX2Model —— config + 权重都从 ckpt_path 自身来(目录: config.json + diffusion_pytorch_model.safetensors;
-    base 单文件: metadata['config'] + 整文件权重)。build_ltx23_transformer 已统一支持这两种来源。
-    ★ 用 args-shim(SimpleNamespace) 喂 build_ltx23_transformer; ckpt_path 缺 config 时退回 pretrained_fallback。
-    enable_camera_control 保持 False(cam-text 走文本, 绝不用 action_labels/plucker)。"""
+    """Build a trainable or frozen model from a Stage 1 or base checkpoint."""
     # ckpt 自身有 config 则用 ckpt 作 pretrained_model_path; 否则退回 base(.safetensors) 取 config + 权重。
     use_path = ckpt_path
     if not ckpt_path or not _read_safetensors_config(ckpt_path, key='transformer'):
@@ -200,10 +167,8 @@ def velocity_to_x0(v, x_t, sigma):
 
 
 # =============================================================================
-# DMD loss (generator) + critic loss (fake_score) —— 镜像 dmd_wan.compute_dmd_loss/compute_critic_loss
-#   ★ CFG: cond = caption + 逐帧 cam-text(action_labels=full_action_labels);
-#          uncond = 纯 neg caption(neg_caption_emb) 且【不拼相机】(action_labels=None),
-#          这样 CFG 放大的是 caption+相机 的联合条件方向, 否则相机在两边被抵消。
+# DMD generator and critic losses. CFG applies camera text only to the
+# conditional branch so guidance preserves both caption and camera control.
 # =============================================================================
 def compute_dmd_loss(real_score, fake_score, x0_gen, caption_emb, neg_caption_emb,
                      full_action_labels, sig_lo, sig_hi, args, device):
@@ -312,7 +277,7 @@ def generator_block_rollout(gen, noise_full, cond, full_action_labels, args, dev
             exit_flag = (i == grad_step)
             # 非命中步禁梯度、命中步带梯度(但跟随外层 _outer_grad, 不在 no_grad rollout 里硬开 grad)
             torch.set_grad_enabled(exit_flag and _outer_grad)
-            # x_in = [clean历史(σ=0) | 当前块(σ=sg)]; cond_latent_frames=s0 → 前 s0 帧 timestep 置 0
+            # Prefix clean history before the current noisy block.
             if prefix is not None:
                 x_in = torch.cat([prefix, blk_noisy], dim=2)            # [B,C,s0+Kb,H,W]
                 cond_n = s0
@@ -443,7 +408,7 @@ def main(args):
     dtype = torch.bfloat16
     task = args.training_mode
 
-    # ---- 三模型 (camtext: enable_camera_control=False, 全参基座; 相机走文本) ----
+    # Build the student, critic, and teacher from the camera-text backbone.
     _gc = bool(getattr(args, "gradient_checkpointing", False))
     _base = args.pretrained_model_path
     generator = build_dit_from_ckpt(args.generator_ckpt or _base, _base,
@@ -487,31 +452,10 @@ def main(args):
     critic_opt = torch.optim.AdamW([p for p in fake_score.parameters() if p.requires_grad],
                                    lr=args.dmd_critic_lr, weight_decay=args.weight_decay)
 
-    # ---- ★ GAN 判别器 (ProjectedDiscriminator, DINO 本地权重; real=真实视频 latent, fake=x0_gen) ----
-    #   plain 模块(不 FSDP), 跨 rank 手动 all-reduce 梯度; 独立 LR(--dmd_disc_lr)。LTX latent=128ch。
-    _use_gan = bool(getattr(args, "dmd_use_gan", False))
-    _gan_w = float(getattr(args, "dmd_gan_weight", 0.0))
-    discriminator = disc_opt = None
-    _disc_params = []
-    if _use_gan:
-        from ADD.models.discriminator import ProjectedDiscriminator
-        from pipelines.common.gan_loss import (
-            discriminator_hinge_loss as _disc_loss_fn,
-            generator_hinge_loss as _gen_gan_fn,
-        )
-        from pipelines.ltx23.train_stage1 import LTX_VAE_LATENT_CHANNELS
-        _lat_ch = int(LTX_VAE_LATENT_CHANNELS)             # LTX VAE z_dim=128; 判别器 SubPixel 上采输入据此
-        discriminator = ProjectedDiscriminator(c_dim=384, in_channels=_lat_ch).to(device)  # 内部 DINO frozen
-        _disc_params = [p for p in discriminator.parameters() if p.requires_grad]
-        _disc_lr = float(getattr(args, "dmd_disc_lr", 1e-4) or 1e-4)
-        disc_opt = torch.optim.AdamW(_disc_params, lr=_disc_lr, weight_decay=0.0, betas=(0.0, 0.999))
-        mprint(f"[DMD-GAN] ProjectedDiscriminator(in_ch={_lat_ch}) LR={_disc_lr:.1e} "
-               f"可训={sum(p.numel() for p in _disc_params)/1e6:.1f}M gan_weight={_gan_w}")
-
     # ---- 稳定化开关日志 ----
     _critic_warmup = int(getattr(args, "dmd_critic_warmup_steps", 0))
-    mprint(f"[DMD-LTX23] 稳定化: critic_warmup={_critic_warmup} ts_schedule={getattr(args,'dmd_ts_schedule',False)} "
-           f"GAN={'开' if _use_gan else '关'}")
+    mprint(f"[DMD-LTX23] 稳定化: critic_warmup={_critic_warmup} "
+           f"ts_schedule={getattr(args,'dmd_ts_schedule',False)}")
 
     # ---- 数据 ----
     #   live(默认, 对齐 stage1): video_real mp4 → 在线 LTX VAE + Gemma 编码; 训练 caption-only(不引入相机)。
@@ -599,26 +543,8 @@ def main(args):
         critic_opt.step()
         _hb("critic 完成", _t)
 
-        # ===== 2) discriminator step (GAN; fake=critic 的 x0_c, real=真实视频 latent) =====
-        _dloss = float("nan")
-        if discriminator is not None:
-            _Fc = min(x0_c.shape[2], latent.shape[2])
-            disc_opt.zero_grad(set_to_none=True)
-            with torch.autocast("cuda", dtype=dtype):
-                dloss = _disc_loss_fn(discriminator, x0_c[:, :, :_Fc], latent[:, :, :_Fc])
-            dloss.backward()
-            if dist.is_initialized() and dist.get_world_size() > 1:   # plain 模块: 手动平均梯度
-                _ws = dist.get_world_size()
-                for _p in _disc_params:
-                    if _p.grad is not None:
-                        dist.all_reduce(_p.grad, op=dist.ReduceOp.SUM); _p.grad /= _ws
-            torch.nn.utils.clip_grad_norm_(_disc_params, args.max_grad_norm)
-            disc_opt.step()
-            _dloss = float(dloss.item())
-
-        # ===== 3) generator 更新【每 _ratio 步 1 次, warmup 后】—— 自己的 fresh rollout(带梯度), 对齐 Wan。
+        # ===== 2) generator 更新【每 _ratio 步 1 次, warmup 后】—— 自己的 fresh rollout(带梯度), 对齐 Wan。
         g_loss = None
-        _l_gan = float("nan")
         _is_gen_step = (step >= _critic_warmup) and (step % _ratio == 0)
         if _is_gen_step:
             _accum_first = (_gen_upd % _accum == 0)
@@ -633,17 +559,9 @@ def main(args):
                 neg_emb = _neg_pe.to(device, x0_gen.dtype).expand(B, -1, -1)
             else:
                 neg_emb = torch.zeros_like(cond_emb)
-            # ★ DMD generator loss (镜像 dmd_wan.compute_dmd_loss):
-            #   cond = caption + 逐帧 cam-text(action_labels=full_action_labels);
-            #   uncond = 纯 neg caption(neg_emb) 且【不拼相机】(action_labels=None)。
+            # The conditional branch uses camera text; the negative branch does not.
             g_loss, _ = compute_dmd_loss(real_score, fake_score, x0_gen, cond_emb, neg_emb,
                                          full_action_labels, _sig_lo, _sig_hi, args, device)
-            # --- GAN 项 (梯度只回 generator) ---
-            if discriminator is not None:
-                with torch.autocast("cuda", dtype=dtype):
-                    _ganl = _gen_gan_fn(discriminator, x0_gen)
-                g_loss = g_loss + _gan_w * _ganl.to(g_loss.dtype)
-                _l_gan = float(_ganl.detach())
             (g_loss / _accum).backward()              # 累积: 除以窗口大小(=1 时不变)
             if _accum_last:                            # 窗口末才 clip + step
                 (generator.clip_grad_norm_(args.max_grad_norm) if hasattr(generator, "clip_grad_norm_")
@@ -656,9 +574,7 @@ def main(args):
         if is_main() and step % args.log_interval == 0:
             _gmsg = (f"g_loss={g_loss.item():.4f}" if g_loss is not None
                      else f"gen=(critic warmup {step}/{_critic_warmup})")
-            _ex = ""
-            if discriminator is not None: _ex += f" disc={_dloss:.4f} gan={_l_gan:.4f}"
-            mprint(f"step {step}/{args.max_train_steps}  {_gmsg}  c_loss={c_loss.item():.4f}{_ex}")
+            mprint(f"step {step}/{args.max_train_steps}  {_gmsg}  c_loss={c_loss.item():.4f}")
         # ---- 验证: 逐 block 自回归采样, 全局共享 caption + 每窗口自己的 cam-text ----
         if (args.validation_interval > 0 and vae is not None
                 and val_sample is not None and step >= args.first_validation_step
@@ -748,10 +664,6 @@ def parse_args():
                    help="rollout 桥接用 euler 确定性步而非 cm 重加噪 (诊断 cm 是否拖累)")
     p.add_argument("--dmd_min_step", type=float, default=0.0, help="critic/DMD 加噪 sigma 下限(0~1)")
     p.add_argument("--dmd_max_step", type=float, default=1.0, help="critic/DMD 加噪 sigma 上限(0~1)")
-    # GAN (ProjectedDiscriminator, DINO 本地权重; real=真实视频 latent, fake=generator x0)
-    p.add_argument("--dmd_use_gan", action="store_true", default=False, help="开 ProjectedDiscriminator GAN loss")
-    p.add_argument("--dmd_gan_weight", type=float, default=0.01, help="generator GAN loss 权重")
-    p.add_argument("--dmd_disc_lr", type=float, default=1e-4, help="判别器独立 LR")
     # SFT / forward-KL 锚定 (LTX23 暂留 stub 参数对齐 sh; loss 项未接, 默认权重 0)
     p.add_argument("--dmd_sft_weight", type=float, default=0.0, help="(stub) SFT 权重, 0=关")
     p.add_argument("--dmd_sft_sigma_max", type=float, default=0.5)

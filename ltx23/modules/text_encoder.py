@@ -1,15 +1,10 @@
-# LTX-2 Text Encoder (完全独立版本)
-"""
-整合自 LTX-2 官方代码，完全独立，不依赖 ltx_core。
-基于 Gemma 的文本编码器。
-"""
+"""Gemma tokenizer, connectors, and text encoder for LTX-Video 2.3."""
 from typing import NamedTuple
-from pathlib import Path
 
 import torch
 import torch.nn as nn
 from einops import rearrange
-from transformers import AutoTokenizer, Gemma3ForConditionalGeneration
+from transformers import AutoTokenizer
 
 from .model_ltx_2_3 import (
     Attention,
@@ -271,75 +266,3 @@ class AVGemmaTextEncoderModel(nn.Module):
         encoded_inputs, attention_mask = self._preprocess_text(text, padding_side)
         video_enc, audio_enc, mask = self._run_connectors(encoded_inputs, attention_mask)
         return AVGemmaEncoderOutput(video_enc, audio_enc, mask)
-
-
-# ============================================================
-# Configurator 函数
-# ============================================================
-
-def create_av_text_encoder(config):
-    """从配置创建 AVGemmaTextEncoderModel"""
-    cfg = config.get("transformer", {})
-    rope_type = LTXRopeType(cfg.get("rope_type", "interleaved"))
-    pe_max_pos = cfg.get("connector_positional_embedding_max_pos", [1])
-
-    feature_extractor = GemmaFeaturesExtractorProjLinear()
-    embeddings_connector = Embeddings1DConnector(num_attention_heads=30, attention_head_dim=128, positional_embedding_max_pos=pe_max_pos, rope_type=rope_type)
-    audio_connector = Embeddings1DConnector(num_attention_heads=30, attention_head_dim=128, positional_embedding_max_pos=pe_max_pos, rope_type=rope_type)
-
-    return AVGemmaTextEncoderModel(feature_extractor, embeddings_connector, audio_connector)
-
-
-def find_file(root, pattern):
-    """查找文件"""
-    matches = list(Path(root).rglob(pattern))
-    if not matches:
-        raise FileNotFoundError(f"Not found: {pattern} in {root}")
-    return str(matches[0].parent)
-
-
-# ============================================================
-# LTX2TextEncoder Wrapper (高级接口)
-# ============================================================
-
-class LTX2TextEncoder(nn.Module):
-    """LTX-2 Text Encoder 高级包装器，用于 inference pipeline"""
-
-    def __init__(self, device=None, dtype=torch.bfloat16):
-        super().__init__()
-        self._device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.dtype = dtype
-        self._encoder = None
-        self._encode_fn = None
-
-    @property
-    def device(self):
-        return self._device
-
-    def set_encoder(self, encoder, encode_fn=None):
-        """设置编码器"""
-        self._encoder = encoder
-        self._encode_fn = encode_fn
-
-    def forward(self, text_prompts):
-        """编码文本 prompts"""
-        if self._encoder is None:
-            raise RuntimeError("Encoder not set")
-
-        results = []
-        for prompt in text_prompts:
-            output = self._encoder(prompt)
-            # output.video_encoding is [1, seq_len, dim], squeeze batch dim
-            results.append({
-                "prompt_embeds": output.video_encoding.squeeze(0),  # [seq_len, dim]
-                "audio_embeds": output.audio_encoding.squeeze(0) if output.audio_encoding is not None else None,
-                "attention_mask": output.attention_mask.squeeze(0) if output.attention_mask is not None else None,
-            })
-
-        # Stack batch: [B, seq_len, dim]
-        batch = {
-            "prompt_embeds": torch.stack([r["prompt_embeds"] for r in results]),
-        }
-        if results[0]["audio_embeds"] is not None:
-            batch["audio_embeds"] = torch.stack([r["audio_embeds"] for r in results])
-        return batch

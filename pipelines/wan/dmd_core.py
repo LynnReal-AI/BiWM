@@ -44,9 +44,6 @@ def register_dmd_args(parser):
                    help="update critic N times, update generator once")
     g.add_argument("--dmd_generator_lr", type=float, default=2e-6)
     g.add_argument("--dmd_critic_lr", type=float, default=4e-6)
-    # GAN discriminator (ProjectedDiscriminator) independent LR; needs ~1e-4 magnitude to learn
-    g.add_argument("--dmd_disc_lr", type=float, default=1e-4,
-                   help="GAN discriminator learning rate (independent of critic; 2e-6 is too low and makes the discriminator unable to learn, disabling GAN)")
     g.add_argument("--gen_train_qkv_only", action="store_true", default=False,
                    help="[compat old flag] = --train_modules qkv. generator DiT only trains attention QKV (self+cross)")
     # generator trainable-module whitelist; takes priority over gen_train_qkv_only
@@ -57,13 +54,9 @@ def register_dmd_args(parser):
                    help="enable ts_schedule: lower bound of DMD/critic noising sigma = denoised_to the generator reached (signal focusing)")
     g.add_argument("--dmd_critic_warmup_steps", type=int, default=0,
                    help="for the first N steps only train the critic, not the generator (DMD signal warmup, 0=off)")
-    # optional tricks (all opt-in, default off): GAN loss / GT-latent regression / EMA / critic TTUR scheduler
-    g.add_argument("--dmd_use_gan", action="store_true", default=False, help="enable ProjectedDiscriminator GAN loss")
-    g.add_argument("--dmd_gan_weight", type=float, default=0.01, help="generator GAN loss weight (best uses 0.01)")
+    # optional GT-latent regression anchor (opt-in, default off)
     g.add_argument("--dmd_use_gt_reg", action="store_true", default=False, help="DMD loss adds +w·MSE(x0_gen, gt_latent)")
     g.add_argument("--dmd_gt_reg_weight", type=float, default=0.1, help="GT-latent regression weight (best uses 0.1)")
-    g.add_argument("--dmd_use_ema", action="store_true", default=False, help="maintain generator EMA weights (for validation/archiving)")
-    g.add_argument("--dmd_ema_decay", type=float, default=0.999, help="EMA decay")
     # SFT + forward-KL anchoring: resists DMD reverse-KL mode-shrinkage/collapse, preserves long video and motion
     g.add_argument("--dmd_sft_weight", type=float, default=0.0, help="SFT (full real-video low-σ velocity MLE) weight, 0=off")
     g.add_argument("--dmd_sft_sigma_max", type=float, default=0.5, help="SFT applied only at σ∈shift(U[sigma_min,this value]) (low-σ refinement)")
@@ -343,29 +336,6 @@ def calc_dmd_loss(real_score, fake_score, x0_gen, caption_emb, neg_caption_emb,
         dmd_loss = dmd_loss + gt_reg_weight * _reg
         _log["gt_reg"] = float(_reg.item())
     return dmd_loss, _log
-
-
-# GAN loss (ProjectedDiscriminator: hinge, frame-level + feature-level dual head)
-def _critic_forward(discriminator, x0_5d):
-    """x0_5d [1,48,F,H,W] -> per-frame [F,48,H,W] fed to the discriminator -> (frame-level logits, feature-level logits_f), each cat to [F, C]."""
-    xf = x0_5d.squeeze(0).permute(1, 0, 2, 3).contiguous()   # [F,48,H,W]
-    logits, logits_f, _ = discriminator(xf, None)
-    return torch.cat(logits, dim=1), torch.cat(logits_f, dim=1)
-
-
-def calc_discriminator_loss(discriminator, fake_x0, real_x0):
-    """discriminator hinge loss: real->+1, fake->-1 (frame-level + feature-level). Both fake/real are detached (only the discriminator is updated)."""
-    pf, pff = _critic_forward(discriminator, fake_x0.detach())
-    pr, prf = _critic_forward(discriminator, real_x0.detach())
-    loss_real = torch.relu(1.0 - pr).mean() + torch.relu(1.0 - prf).mean()
-    loss_fake = torch.relu(1.0 + pf).mean() + torch.relu(1.0 + pff).mean()
-    return 0.5 * (loss_real + loss_fake)
-
-
-def calc_generator_gan_loss(discriminator, fake_x0):
-    """generator's GAN term: -mean(pred_fake) (frame-level + feature-level), gradient flows back to the generator."""
-    pf, pff = _critic_forward(discriminator, fake_x0)
-    return -pf.mean() - pff.mean()
 
 
 # SFT + forward-KL anchoring: resists DMD reverse-KL mode-shrinkage/collapse, preserves long video and motion

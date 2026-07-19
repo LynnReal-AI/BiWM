@@ -16,8 +16,7 @@
 #   - fake_score (critic, online full-param): starts from stage1 weights, learns the generator's current distribution
 #   - generator (student, online full-param): stage1 weights, 4-step single-chunk rollout
 #
-# (per user request):
-#   - GAN loss / GT-reg / EMA all disabled (DMD_GAN/DMD_GT_REG/DMD_EMA left empty)
+# GT-latent regression is disabled by default.
 #   - does not involve history_encoder (code skips build/load/train), normal rollout does DMD
 #
 # (per user request): train [two blocks], and [do not use HistoryEncoder].
@@ -79,18 +78,13 @@ DFAKE_GEN_RATIO=6                 # critic updates N times, gen 1 time (5->6, cr
 REAL_GUIDANCE=5.0
 GEN_LR=1e-5   # switched back to 1e-5 per user request
 CRITIC_LR=2e-6
-DISC_LR=1e-4   # GAN discriminator independent LR (previously wrongly used critic 2e-6 -> discriminator could not learn, disc=2.0 GAN ineffective)
 
 # ===== Speedup: critic warmup + ts_schedule =====
 DMD_CRITIC_WARMUP_STEPS=50
 DMD_TS_SCHEDULE="--dmd_ts_schedule"
 
-# ===== best-file DMD trick (per user request GAN / GT-reg / EMA all temporarily disabled) =====
-# enable GAN to resist collapse — at step200 the generator collapses to RGB noise; pure DMD2 with no regularization is too fragile.
-#   ProjectedDiscriminator(DINO-ViT-S, local weights ADD/models/weights/, offline usable), hinge, boosts sharpness + resists high-frequency collapse.
-DMD_GAN=""        # GAN disabled per user request (rely on SFT+forward-KL to resist collapse instead); to enable change back to "--dmd_use_gan --dmd_gan_weight 0.01"
+# ===== Optional GT-latent regression =====
 DMD_GT_REG=""     # disable GT-latent regression (if still drifting, add --dmd_use_gt_reg --dmd_gt_reg_weight 0.05)
-DMD_EMA=""        # disable EMA
 
 # ===== SFT + forward-KL anchoring (* , port from yume ltx_dmd.sh) — resists DMD collapse/mode-shrink, preserves long video and motion =====
 #   SFT: low-sigma flow-matching velocity MLE on the [full real video (20 frames)] (strong data anchoring); * uses full video length, decoupled from dynamic M rollout,
@@ -148,7 +142,7 @@ echo "  history_mode     : ${HISTORY_MODE}  (none=clean condition frames / frame
 echo "  4-step sigmas    : ${DMD_SIGMAS} (shift=${SIGMA_SHIFT})"
 echo "  camera           : pure discrete cam-text (81cls), full_labels from action_frames (injected per block)"
 echo "  train modules    : ${TRAIN_MODULES}  dfake/gen=${DFAKE_GEN_RATIO}  gen_lr=${GEN_LR} critic_lr=${CRITIC_LR}"
-echo "  best-trick        : GAN=[${DMD_GAN:-off}] GT_REG=[${DMD_GT_REG:-off}] EMA=[${DMD_EMA:-off}]"
+echo "  GT regression     : [${DMD_GT_REG:-off}]"
 echo "  inherit stage1 weights : ${STAGE1_CKPT_DIR}  (real/fake/generator all start from here)"
 echo "    generator_ckpt : ${GENERATOR_CKPT}"
 echo "    real_score_ckpt: ${REAL_SCORE_CKPT}"
@@ -165,7 +159,7 @@ export PATH="${CONDA_ENV_DIR}/bin:${PATH}"
 export LD_LIBRARY_PATH="${CONDA_ENV_DIR}/lib:${LD_LIBRARY_PATH}"
 export TOKENIZERS_PARALLELISM=false
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-# Offline cluster: GAN discriminator DINO uses local weights, disable networking to avoid timeouts
+# Offline cluster: disable networking to avoid model-hub timeouts
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_HUB_DOWNLOAD_TIMEOUT=5
@@ -196,12 +190,9 @@ ${PYTHON_BIN} -m torch.distributed.run \
     --real_guidance_scale ${REAL_GUIDANCE} \
     --dmd_generator_lr ${GEN_LR} \
     --dmd_critic_lr ${CRITIC_LR} \
-    --dmd_disc_lr ${DISC_LR} \
     --dmd_critic_warmup_steps ${DMD_CRITIC_WARMUP_STEPS} \
     ${DMD_TS_SCHEDULE} \
-    ${DMD_GAN} \
     ${DMD_GT_REG} \
-    ${DMD_EMA} \
     ${SFT} \
     ${FKL} \
     ${REAL_FKL} \

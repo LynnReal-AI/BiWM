@@ -1,14 +1,9 @@
-# LTX-2 Video VAE (完全独立版本)
-"""
-整合自 LTX-2 官方代码，完全独立，不依赖 ltx_core。
-"""
+"""Video VAE building blocks and factory functions for LTX-Video 2.3."""
 import math
 from enum import Enum
-from typing import Optional, Tuple, Union, List, Any
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from einops import rearrange
 
 __all__ = ['VideoEncoder', 'VideoDecoder']

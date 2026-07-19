@@ -9,8 +9,8 @@
 """BiWM Stage 1 — camera-control fine-tuning (Wan training entry).
 
 Wan 2.2 5B training: video generation, discrete/continuous camera control,
-FSDP, bf16 mixed precision, Context Parallel, multi-resolution, optional
-adversarial loss, and partial fine-tuning (trainable_modules).
+FSDP, bf16 mixed precision, Context Parallel, multi-resolution, and partial
+fine-tuning (trainable_modules).
 
 Usage:
     torchrun --nproc_per_node 8 pipelines/wan/train_stage1.py \

@@ -1,28 +1,24 @@
+"""Attention backends and dispatch helpers for LTX-Video 2.3."""
+
 from enum import Enum
 from typing import Protocol
 
 import torch
 
-from ltx23.modules.rope import LTXRopeType, apply_rotary_emb
-
 memory_efficient_attention = None
 flash_attn_func = None
 try:
-    # Try flash-attn first (faster and more memory efficient)
+    # Prefer FlashAttention and fall back to xFormers when unavailable.
     from flash_attn import flash_attn_func
 except ImportError:
     flash_attn_func = None
     try:
-        # Fallback to xformers if flash-attn not available
         from xformers.ops import memory_efficient_attention
     except ImportError:
         memory_efficient_attention = None
 
 
-# =============================================================================
-# Wan-style flash_attention (varlen API, used by model_wan.py)
-# Imported from wan/modules/attention.py for compatibility.
-# =============================================================================
+# Wan-style variable-length attention compatibility helper.
 import warnings as _warnings
 
 _FLASH_ATTN_3_AVAILABLE = False

@@ -1,40 +1,5 @@
-# BiWM LTX-Video 2.3 Stage 1 training entry.
-# =============================================================================
-# LTX-Video 2.3 (LTX2.3) stage1 训练入口 —— wan 风格单入口 (HY15 的结构孪生)
-# =============================================================================
-# 本文件是 fastvideo/hy15_model.py 的【结构孪生】: main() 循环 / Muon 优化器 / FSDP /
-# checkpoint 保存格式 / 分布式初始化 / 数据集 loader / argparse / 验证节奏
-# 全部与 HY15 保持一致, 只在三处不同:
-#   1) 模型加载: LTX23Model (ltx23.modules.model_ltx_2_3), 从 .safetensors metadata['config'] 构建;
-#      改用【正确】的 LTX23Model —— 它内置【逐帧 cam-text cross-attn】(同 Wan2.2-5B):
-#      precompute_cam_text_embeddings 预编码 81 类相机文本存 _cam_text_raw, _forward 按 action_labels[b,t]
-#      逐 latent 帧 gather cam-text + caption 拼 per_frame_context 做 cross-attn。旧的 LTX2Model 无此能力。
-#   2) 训练目标接线: LTX flow-matching (velocity = noise - latents), 走 LTX forward 接口;
-#   3) i2v 条件机制: 不是 concat 通道, 而是 forward 传 cond_latent_frames=N —— 模型内部把前 N
-#      个 latent 帧的 timestep 置 σ=0(clean), 见 model_ltx_2_3.py:998-1001。
-#
-# 相机控制: 【逐帧离散 cam-text via action_labels】(与 Wan2.2-5B 一致, 不再拼进 prompt):
-#   make_live_batch 用 caption-ONLY 当 prompt, 相机由逐 latent 帧 action_labels 经模型内置
-#   precompute_cam_text_embeddings 注入 cross-attn。不用 plucker/连续相机; cam-text 路径仅由
-#   precompute(置 _use_cam_text_cross_attn + _cam_text_raw) + 传入 action_labels 触发,
-#   不依赖 enable_camera_control (见 _forward 的 _use_cam_text guard, model_ltx_2_3.py:1128-1130)。
-#
-# 文本编码器: Gemma-3 (AVGemmaTextEncoderModel + GemmaFeaturesExtractorProjLinear +
-#   Embeddings1DConnector + LTXVGemmaTokenizer + Gemma3ForConditionalGeneration)。
-#   一句 prompt → text_encoder(prompt).video_encoding [1, L, cross_attention_dim] (22B=4096)。
-#   LTX 的 model.forward 只吃 context(embedding list), 没有 attention mask。
-#
-# 权重: --pretrained_model_path 指向 LTX-2.3 的 .safetensors 文件(含 transformer/vae/text 三部分);
-#   transformer 配置从该文件 metadata['config']['transformer'] 读, 构建逻辑搬自 utils/ltx_wrapper.py
-#   (self-contained, 不 import ltx_wrapper)。
-#
-# ★ precompute 接线: Gemma 文本编码器(load_text_encoder)加载后、FSDP wrap 之前, 在【未 wrap 的】model 上
-#   调用一次 model.precompute_cam_text_embeddings(encode_fn, device, dtype); encode_fn 用 Gemma tokenizer
-#   求每句真实 token 长度 S_i, 再 te(t).video_encoding[0][:S_i] → List[Tensor[S_i, text_dim]]。
-#   存下的 _cam_text_raw 是 model 的普通 list 属性(非 nn 参数), FSDP wrap 后仍存活(与参考实现一致)。
-#
-# ⚠️ 本文件按"先写对、后跑通"的约定写; 真权重/数据齐了再在 DLC 上冒烟调。
-# =============================================================================
+"""Stage 1 camera-text fine-tuning for the LTX-Video 2.3 backbone."""
+
 import argparse
 import inspect
 import json
@@ -163,12 +128,7 @@ def _resolve_weight_file(ckpt_path):
 
 
 def build_ltx23_transformer(args, device, dtype=torch.bfloat16):
-    """构建 LTX23Model (搬自 utils/ltx_wrapper.LTXDiffusionWrapper._load_model)。
-    配置从 ckpt(.safetensors) metadata['config']['transformer'] 读, 映射 attention_type/rope_type 枚举,
-    过滤到 LTX23Model.__init__ 接受的键 → 构建 → convert_checkpoint_state_dict + load_state_dict(strict=False)。
-    LTX23Model 内置【逐帧 cam-text cross-attn】, 相机经 action_labels + precompute 注入,
-      不启用 plucker/连续相机; cam-text 路径仅由 precompute(_use_cam_text_cross_attn + _cam_text_raw) +
-      传入 action_labels 触发, 不依赖 enable_camera_control(其值随 ckpt config, 默认 False 即可)。"""
+    """Build an LTX23Model from checkpoint metadata and compatible weights."""
     from ltx23.modules.attention import AttentionFunction
     from ltx23.modules.rope import LTXRopeType
     import safetensors.torch
@@ -201,8 +161,7 @@ def build_ltx23_transformer(args, device, dtype=torch.bfloat16):
     filtered_config = {k: v for k, v in cfg.items() if k in valid_params}
     mprint(f"[LTX23] 构建 LTX23Model: {len(filtered_config)} 个配置键; "
            f"cross_attention_dim={filtered_config.get('cross_attention_dim')}, "
-           f"num_layers={filtered_config.get('num_layers')}, "
-           f"enable_camera_control={filtered_config.get('enable_camera_control', False)}")
+           f"num_layers={filtered_config.get('num_layers')}")
     if args.camera_mode == "prope":
         raise NotImplementedError("[LTX23] camera_mode=prope 不支持; LTX2.3 stage1 仅支持逐帧 cam-text(action_labels 控相机)")
     mprint("[LTX23] camera_mode=camtext (相机走逐帧 cam-text via action_labels; 模型内置 cross-attn; 全参训练)")
@@ -602,10 +561,7 @@ def train_one_step(model, batch, args, device, step):
         if image_cond is not None and image_cond.shape[2] >= 1:
             noisy[:, :, :1] = image_cond[:, :, :1].to(noisy.dtype)
 
-    # --- LTX forward: x_list=[noisy_i [C,F,H,W]], ctx_list=[prompt_embed_i [L,C]],
-    #     seq_len=T*H*W (patch_size=1), t=per-BATCH sigma[B] (≤1, 模型直接接受); 返回 [B,C,F,H,W]。
-    #     ★ action_labels=[B,T_lat] 逐帧相机 —— LTX23Model 内部按 action_labels[b,t] gather cam-text+caption
-    #       拼 per_frame_context 做 cross-attn (model_ltx_2_3.py:1123-1198); t2v/i2v 都传(逐帧相机为监督信号)。 ---
+    # LTX receives one latent/context tensor per sample and per-frame action labels.
     x_list = [noisy[i] for i in range(B)]
     ctx_list = [prompt_embed[i] for i in range(B)]
     seq_len = T_lat * H * W

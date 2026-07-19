@@ -428,25 +428,6 @@ def perform_single_training_step(
             velocity_target = (noise - video_latent).unsqueeze(0)
             loss = F.mse_loss(video_output.float(), velocity_target.float())
 
-        # === Adversarial Loss (optional) ===
-        adv_trainer = getattr(transformer, '_adv_trainer', None)
-        if adv_trainer is not None:
-            sigma_val = sigma.item()
-            if cond_end > 0:
-                noisy_slice = noisy_latent[:, cond_end:].unsqueeze(0)
-                fake_x0 = noisy_slice - sigma_val * output_for_loss
-                real_x0 = video_latent[:, cond_end:].unsqueeze(0)
-            else:
-                noisy_full = noisy_latent.unsqueeze(0)
-                fake_x0 = noisy_full - sigma_val * video_output
-                real_x0 = video_latent.unsqueeze(0)
-            d_loss = adv_trainer.discriminator_step(real_x0.detach(), fake_x0.detach())
-            g_loss = adv_trainer.generator_loss(fake_x0)
-            loss = loss + adv_trainer.gan_weight * g_loss
-            adv_trainer._last_d_loss = d_loss
-            adv_trainer._last_g_loss = g_loss.item()
-            log_main(f"[GAN] d={d_loss:.4f}, g={g_loss.item():.4f}")
-
         # === NaN check (global sync) ===
         local_nan = torch.tensor(
             [1.0 if (torch.isnan(loss) or torch.isinf(loss)) else 0.0],
@@ -956,7 +937,7 @@ def _dmd_extract_cam(di):
 
 
 def _dmd_embed_gt_latent(video, vae_encoder, device, n_latent_frames, expect_chw=None):
-    """di[0] real video → VAE latent [1,48,n_latent_frames,Hlat,Wlat] (GAN real / GT regression).
+    """di[0] real video → VAE latent [1,48,n_latent_frames,Hlat,Wlat] (GT regression).
     video: [T,C,H,W] or [1,T,C,H,W], pixels in [-1,1]. If frame count < n_latent_frames or channel/spatial shape does not
     match x0_gen (dataset resolution bucketing) → return None (skip this step, prevent crash from shape mismatch)."""
     try:
@@ -977,7 +958,7 @@ def _dmd_embed_gt_latent(video, vae_encoder, device, n_latent_frames, expect_chw
             return None
         if expect_chw is not None and tuple(lat.shape[1:]) != (int(expect_chw[0]), lat.shape[2],
                                                                int(expect_chw[1]), int(expect_chw[2])):
-            # Channel/spatial resolution does not match x0_gen (bucketing/scaling), skip to avoid MSE/discriminator shape mismatch
+            # Channel/spatial resolution does not match x0_gen (bucketing/scaling), skip to avoid MSE shape mismatch
             return None
         return lat[:, :, :n_latent_frames].contiguous()
     except Exception as _e:
@@ -1297,11 +1278,9 @@ def execute_dmd_distillation(args, generator, history_encoder, vae_encoder, vae_
     gen_opt = torch.optim.AdamW(gen_params, lr=args.dmd_generator_lr, weight_decay=0.0, betas=(0.0, 0.999))
     critic_opt = torch.optim.AdamW(critic_params, lr=args.dmd_critic_lr, weight_decay=0.0, betas=(0.0, 0.999))
 
-    # 4b. best-file trick (all opt-in): GAN discriminator + EMA. (GT-latent regression uses vae encoding inside the loop)
-    _use_gan = getattr(args, 'dmd_use_gan', False)
+    # 4b. Optional GT-latent regression uses VAE encoding inside the loop.
     _use_gt_reg = getattr(args, 'dmd_use_gt_reg', False)
     _gt_reg_w = float(getattr(args, 'dmd_gt_reg_weight', 0.0))
-    _gan_w = float(getattr(args, 'dmd_gan_weight', 0.0))
     # SFT + forward-KL anchoring (port from yume) — resist DMD collapse/mode-shrinkage, preserve long videos and motion
     _sft_w = float(getattr(args, 'dmd_sft_weight', 0.0))
     _rfkl_w = float(getattr(args, 'dmd_real_fkl_weight', 0.0))
@@ -1309,30 +1288,6 @@ def execute_dmd_distillation(args, generator, history_encoder, vae_encoder, vae_
     _use_sft = _sft_w > 0.0
     _use_real_fkl = _rfkl_w > 0.0
     _use_fkl = _fkl_w > 0.0
-    discriminator = None
-    disc_opt = None
-    _disc_params = []
-    if _use_gan:
-        from ADD.models.discriminator import ProjectedDiscriminator
-        # the discriminator uses [plain module + manual all-reduce of gradients], not wrapped in DDP.
-        #   Reason: if wrapped in DDP, the generator's GAN term needs to use .module forward (bypassing DDP.forward), and at backward
-        #   DDP's param hook has not prepared the reducer → deadlock/error. plain + manual sync is most stable, and also convenient for the gen term to reuse the same module.
-        discriminator = ProjectedDiscriminator(c_dim=384).to(current_device)   # internal DINO is already frozen
-        _disc_params = [p for p in discriminator.parameters() if p.requires_grad]
-        # discriminator uses an independent LR(--dmd_disc_lr, default 1e-4), no longer wrongly using critic's 2e-6
-        #   (2e-6 too low → discriminator cannot learn, disc loss stuck at 2.0, GAN ineffective and cannot prevent collapse).
-        _disc_lr = float(getattr(args, 'dmd_disc_lr', 1e-4) or 1e-4)
-        disc_opt = torch.optim.AdamW(_disc_params, lr=_disc_lr, weight_decay=0.0, betas=(0.0, 0.999))
-        echo_on_main_rank(f"[DMD-GAN] discriminator LR = {_disc_lr:.1e} (independent of critic_lr={args.dmd_critic_lr:.1e})")
-        echo_on_main_rank(f"[DMD-GAN] ProjectedDiscriminator built (plain+manual allreduce): trainable params "
-                              f"{sum(p.numel() for p in _disc_params)/1e6:.1f}M, gan_weight={_gan_w}")
-    ema = None
-    if getattr(args, 'dmd_use_ema', False):
-        from ADD.ldm.modules.ema import LitEma
-        ema = LitEma(generator, decay=float(getattr(args, 'dmd_ema_decay', 0.999)))
-        ema.to(current_device)
-        echo_on_main_rank(f"[DMD-EMA] generator EMA built: decay={getattr(args,'dmd_ema_decay',0.999)}")
-
     # 5. dataloader + neg prompt
     # 18: BUGFIX — the neg prompt previously used getattr(args,'negative_prompt',''),
     #   but train_stage2.py's argparse never defines --negative_prompt → it was actually an empty string.
@@ -1416,10 +1371,10 @@ def execute_dmd_distillation(args, generator, history_encoder, vae_encoder, vae_
                                         mode='nearest').squeeze(1).long()
                 full_labels = _al
 
-            # GT latent (for GAN real / GT regression): di[0] real video → VAE latent. None if unused.
+            # GT latent for regression/SFT: di[0] real video → VAE latent. None if unused.
             gt_latent = None
             # SFT/real-FKL also need gt_latent (complete real video, full length dmd_num_blocks*K=20)
-            if (_use_gan or _use_gt_reg or _use_sft or _use_real_fkl) and vae_encoder is not None:
+            if (_use_gt_reg or _use_sft or _use_real_fkl) and vae_encoder is not None:
                 gt_latent = _dmd_embed_gt_latent(data_item["pixel_values"], vae_encoder, current_device,
                                                   int(args.dmd_num_blocks) * int(args.dmd_block_K),
                                                   expect_chw=latent_shape)
@@ -1453,38 +1408,6 @@ def execute_dmd_distillation(args, generator, history_encoder, vae_encoder, vae_
                 _cgn = float(torch.nn.utils.clip_grad_norm_(critic_params, args.max_grad_norm))
                 critic_opt.step()
 
-            # --- discriminator step (GAN, real=gt_latent, fake=generator x0_c) ---
-            #   deadlock fix: disc's backward triggers a DDP all-reduce (collective), which must be executed
-            #     consistently by all ranks —— but whether gt_latent is available is [per-rank] (each rank's video resolution/frame count differs, None if unavailable).
-            #     If some ranks have gt and run disc while others skip → all-reduce misalignment → NCCL silent deadlock (this is exactly the step1 stall).
-            #     Use all_reduce(MIN) for global consistency: only run disc when [all ranks have gt], otherwise everyone skips.
-            _dloss = float('nan')
-            if discriminator is not None:
-                _has_gt = 1 if gt_latent is not None else 0
-                if dist.is_initialized() and dist.get_world_size() > 1:
-                    _gt_flag = torch.tensor([_has_gt], device=current_device, dtype=torch.int32)
-                    dist.all_reduce(_gt_flag, op=dist.ReduceOp.MIN)
-                    _all_have_gt = bool(_gt_flag.item())
-                else:
-                    _all_have_gt = bool(_has_gt)
-                if _all_have_gt:
-                    from pipelines.wan.dmd_core import calc_discriminator_loss
-                    disc_opt.zero_grad(set_to_none=True)
-                    _Fc = min(x0_c.shape[2], gt_latent.shape[2])
-                    with torch.autocast('cuda', dtype=dtype):
-                        dloss = calc_discriminator_loss(discriminator, x0_c[:, :, :_Fc], gt_latent[:, :, :_Fc])
-                    dloss.backward()
-                    # ★ Manually sync discriminator gradients (plain module, average across ranks)
-                    if dist.is_initialized() and dist.get_world_size() > 1:
-                        _ws = dist.get_world_size()
-                        for _p in _disc_params:
-                            if _p.grad is not None:
-                                dist.all_reduce(_p.grad, op=dist.ReduceOp.SUM)
-                                _p.grad /= _ws
-                    torch.nn.utils.clip_grad_norm_(_disc_params, args.max_grad_norm)
-                    disc_opt.step()
-                    _dloss = float(dloss.item())
-
             # --- generator step (every ratio steps): DMD loss (real frozen + fake independent) ---
             gloss_val = float('nan')
             _ggn = _g_lora = _g_he = _g_patch = float('nan')
@@ -1504,12 +1427,6 @@ def execute_dmd_distillation(args, generator, history_encoder, vae_encoder, vae_
                                               full_labels, args, current_device, gradient_mask=gmask,
                                               denoised_to=_dto_g,
                                               gt_latent=_gt_for_reg, gt_reg_weight=_gt_reg_w)
-                # ★ GAN term (plain discriminator, gradient flows only to generator; the discriminator's local gradient is cleared by zero_grad on the next disc step)
-                if discriminator is not None:
-                    from pipelines.wan.dmd_core import calc_generator_gan_loss
-                    with torch.autocast('cuda', dtype=dtype):
-                        _ganl = calc_generator_gan_loss(discriminator, x0_g)
-                    gloss = gloss + _gan_w * _ganl.to(gloss.dtype)
                 # SFT + forward-KL anchoring (port from yume) — resist collapse/mode-shrinkage, preserve long videos and motion.
                 #   SFT/real-FKL use [complete real video length] (gt_latent, 20 frames), decoupled from the dynamic-M rollout (even warmup M=1 learns full length).
                 _l_sft = _l_fkl = _l_rfkl = float('nan')
@@ -1548,7 +1465,7 @@ def execute_dmd_distillation(args, generator, history_encoder, vae_encoder, vae_
                     _nvfp4_kl_val = float(_fp8_kl.detach())   # reuse the same print field
                 (gloss / _accum).backward()                      # ★ accumulate: scale loss by 1/N
                 gloss_val = gloss.item()
-                if _gen_micro == _accum - 1:                      # accumulated N gen-updates → clip + step + ema
+                if _gen_micro == _accum - 1:                      # accumulated N gen-updates → clip + step
                     # ★ generator grouped gradients (before clip): LoRA-G / history_encoder / patch_embedding —— confirm each part is learning
                     _g_lora = _dmd_gradient_norm([p for n, p in generator.named_parameters()
                                               if p.requires_grad and ('lora_A' in n or 'lora_B' in n)])
@@ -1558,12 +1475,6 @@ def execute_dmd_distillation(args, generator, history_encoder, vae_encoder, vae_
                              if history_encoder is not None else float('nan'))
                     _ggn = float(torch.nn.utils.clip_grad_norm_(gen_params, args.max_grad_norm))
                     gen_opt.step()
-                    if ema is not None:    # ★ EMA: update shadow weights after each generator update (disable EMA on failure without interrupting training)
-                        try:
-                            ema(generator)
-                        except Exception as _ee:
-                            echo_on_main_rank(f"[DMD-EMA] update failed, disabling EMA: {_ee}")
-                            ema = None
                 _gen_update_count += 1                            # count each gen-update (used for accumulation grouping)
 
             # the print covers both "every 10 steps" and "every generator update step" (when ratio and 10 are misaligned,
@@ -1579,8 +1490,6 @@ def execute_dmd_distillation(args, generator, history_encoder, vae_encoder, vae_
                     _gmsg = "gen=(this step is not a generator update step)"
                 # dynamic DMD — print this step's total block count M for critic/gen rollout (history=M-1)
                 _extra = ""
-                if discriminator is not None:
-                    _extra += f" disc={_dloss:.4f}"
                 if _use_gt_reg and _is_gen_step and isinstance(_gi, dict) and 'gt_reg' in _gi:
                     _extra += f" gt_reg={_gi['gt_reg']:.4f}"
                 if (_use_nvfp4 or _use_fp8) and _is_gen_step and not math.isnan(_nvfp4_kl_val):
@@ -1595,22 +1504,10 @@ def execute_dmd_distillation(args, generator, history_encoder, vae_encoder, vae_
             # --- validation: periodically use generator 4-step to generate the full segment (check distillation effect + camera joystick) ---
             if (vae_decoder is not None and _val_interval > 0
                     and (global_step % _val_interval == 0 or global_step == _first_val)):
-                # ★ EMA: validation temporarily swaps in the EMA shadow weights to see the effect, then restores afterwards (fall back to live weights on failure)
-                _ema_applied = False
-                if ema is not None:
-                    try:
-                        ema.store(generator.parameters()); ema.copy_to(generator); _ema_applied = True
-                    except Exception as _ee:
-                        echo_on_main_rank(f"[DMD-EMA] copy_to failed, validation uses live weights: {_ee}")
                 _dmd_evaluate(generator, history_encoder, real_score, vae_decoder, args, cap_emb,
                               neg_emb, full_labels, latent_shape, current_device, dtype,
                               args.output_dir, global_step, global_rank, getattr(args, 'fps', 24.0),
                               caption_text=cap)
-                if _ema_applied:
-                    try:
-                        ema.restore(generator.parameters())
-                    except Exception as _ee:
-                        echo_on_main_rank(f"[DMD-EMA] restore failed: {_ee}")
 
             if global_step > 0 and global_step % save_steps == 0:
                 try:
@@ -1878,22 +1775,6 @@ def main(args: argparse.Namespace) -> None:
     echo_on_main_rank(f"Steps per epoch: {steps_per_epoch}")
     echo_on_main_rank(f"Total train steps: {total_train_steps}")
 
-    # === Adversarial Loss ===
-    _gan_weight = getattr(args, 'gan_weight', 0.01)
-    if getattr(args, 'distill', False) and _gan_weight > 0:
-        from pipelines.wan.adversarial_loss import GanCoach
-        adv_trainer = GanCoach(
-            device=current_device,
-            fsdp_kwargs=None,
-            lr=getattr(args, 'discriminator_learning_rate', 1e-4),
-            gan_weight=_gan_weight,
-            latent_channels=wc.WAN_LATENT_CHANNEL_COUNT,
-        )
-        transformer._adv_trainer = adv_trainer
-        echo_on_main_rank(f"[Distill] Adversarial training: weight={_gan_weight}")
-    else:
-        transformer._adv_trainer = None
-
     # === Training loop ===
     global_step = resumed_step
     start_epoch = resumed_step // steps_per_epoch if resumed_step > 0 else 0
@@ -2007,11 +1888,6 @@ def main(args: argparse.Namespace) -> None:
                     tb_writer.add_scalar(f"train/loss_{last_task_type}", step_loss, global_step)
                     if last_cond_end > 0:
                         tb_writer.add_scalar("train/cond_frames", last_cond_end, global_step)
-                    _adv = getattr(transformer, '_adv_trainer', None)
-                    if _adv is not None and hasattr(_adv, '_last_d_loss'):
-                        tb_writer.add_scalar("train/d_loss", _adv._last_d_loss, global_step)
-                    if _adv is not None and hasattr(_adv, '_last_g_loss'):
-                        tb_writer.add_scalar("train/g_loss", _adv._last_g_loss, global_step)
                     tb_writer.add_scalar("train/sigma", last_sigma, global_step)
                     sigma_history.append(last_sigma)
                     if len(sigma_history) >= SIGMA_HIST_INTERVAL:
@@ -2289,11 +2165,6 @@ def parse_cli_options() -> argparse.Namespace:
 
     # ===== trainable_modules =====
     parser.add_argument("--trainable_modules", type=str, default=None)
-
-    # ===== Adversarial distillation =====
-    parser.add_argument("--distill", action="store_true", default=False)
-    parser.add_argument("--discriminator_learning_rate", type=float, default=1e-4)
-    parser.add_argument("--gan_weight", type=float, default=0.01)
 
     # ===== Multi-source data =====
 

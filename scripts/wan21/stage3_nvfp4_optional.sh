@@ -18,8 +18,7 @@
 #   - fake_score (critic, online full-param): starts from stage-1 stage1 weights (aligns to generator distribution after warmup)
 #   - generator (student, online full-param): * stage-2 DMD weights, quantization-aware fine-tuned on top
 #
-# (per user request):
-#   - GAN loss / GT-reg / EMA all disabled (DMD_GAN/DMD_GT_REG/DMD_EMA left empty)
+# GT-latent regression is disabled by default.
 #   - does not involve history_encoder (code skips build/load/train), normal rollout does DMD
 #
 # (per user request): train [two blocks], and [do not use HistoryEncoder].
@@ -72,10 +71,8 @@ CRITIC_LR=2e-6
 DMD_CRITIC_WARMUP_STEPS=50
 DMD_TS_SCHEDULE="--dmd_ts_schedule"
 
-# ===== best-file DMD trick (per user request GAN / GT-reg / EMA all temporarily disabled) =====
-DMD_GAN=""        # disable GAN loss
+# ===== Optional GT-latent regression =====
 DMD_GT_REG=""     # disable GT-latent regression
-DMD_EMA=""        # disable EMA
 
 # ===== * NVFP4 quantization-aware training (QAT) =====
 #   kl_weight: total self-distillation KL weight (empirically: 0.1/0.5 too strong -> purple tint, 0.03 recommended to start)
@@ -141,7 +138,7 @@ echo "  rollout          : num_chunks=${NUM_CHUNKS} × chunk_size=${CHUNK_SIZE} 
 echo "  4-step sigmas    : ${DMD_SIGMAS} (shift=${SIGMA_SHIFT})"
 echo "  camera           : pure discrete cam-text (81cls), full_labels from action_frames (injected per block)"
 echo "  train modules    : ${TRAIN_MODULES}  dfake/gen=${DFAKE_GEN_RATIO}  gen_lr=${GEN_LR} critic_lr=${CRITIC_LR}"
-echo "  best-trick        : GAN=[${DMD_GAN:-off}] GT_REG=[${DMD_GT_REG:-off}] EMA=[${DMD_EMA:-off}]"
+echo "  GT regression     : [${DMD_GT_REG:-off}]"
 echo "  NVFP4 QAT         : on (KL w=${NVFP4_KL_WEIGHT} flow=${NVFP4_FLOW_WEIGHT} x0=${NVFP4_X0_WEIGHT} warmup=${NVFP4_WARMUP})"
 echo "  inherit (Stage3) : generator<-stage-2 DMD, teacher/critic<-stage-1 stage1"
 echo "    generator_ckpt : ${GENERATOR_CKPT}   (stage2 DMD)"
@@ -159,7 +156,7 @@ export PATH="${CONDA_ENV_DIR}/bin:${PATH}"
 export LD_LIBRARY_PATH="${CONDA_ENV_DIR}/lib:${LD_LIBRARY_PATH}"
 export TOKENIZERS_PARALLELISM=false
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-# Offline cluster: GAN discriminator DINO uses local weights, disable networking to avoid timeouts
+# Offline cluster: disable networking to avoid model-hub timeouts
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_HUB_DOWNLOAD_TIMEOUT=5
@@ -189,9 +186,7 @@ ${PYTHON_BIN} -m torch.distributed.run \
     --dmd_critic_lr ${CRITIC_LR} \
     --dmd_critic_warmup_steps ${DMD_CRITIC_WARMUP_STEPS} \
     ${DMD_TS_SCHEDULE} \
-    ${DMD_GAN} \
     ${DMD_GT_REG} \
-    ${DMD_EMA} \
     ${NVFP4} \
     --train_modules ${TRAIN_MODULES} \
     --offload_text_encoder \

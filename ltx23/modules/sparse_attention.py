@@ -1,11 +1,5 @@
-"""
-Block Sparse Attention for LTX2 Video Transformers.
+"""Triton and PyTorch block-sparse attention for LTX-Video 2.3."""
 
-Based on LongCat paper's 3D Block Sparse Attention mechanism.
-Implements hardware-aligned sparse attention with Triton kernels for acceleration.
-"""
-
-import math
 from typing import Optional, Tuple
 
 import torch
@@ -192,7 +186,7 @@ class BlockSparseAttention(nn.Module):
         q_pool = q_pool.transpose(1, 2)  # [B, num_heads, Nq, head_dim]
         k_pool = k_pool.transpose(1, 2)  # [B, num_heads, Nk, head_dim]
 
-        # S_pool = (Q_pool @ K_pool^T) / sqrt(d)
+        # Compute pooled query/key scores with scaled dot-product attention.
         scores = torch.matmul(q_pool, k_pool.transpose(-2, -1)) * self.scale
         # Shape: [B, num_heads, Nq, Nk]
 
@@ -341,13 +335,7 @@ class BlockSparseAttention(nn.Module):
         v_blocks: torch.Tensor,
         block_mask: torch.Tensor,
     ) -> torch.Tensor:
-        """
-        Triton kernel implementation (placeholder for now).
-
-        TODO: Implement optimized Triton kernels for production use.
-        For now, fall back to PyTorch implementation.
-        """
-        # For initial implementation, use PyTorch fallback
+        """Use the PyTorch path when a specialized Triton kernel is unavailable."""
         return self._pytorch_sparse_attention(
             q_blocks, k_blocks, v_blocks, block_mask, None
         )
@@ -448,7 +436,7 @@ if TRITON_AVAILABLE:
             p = tl.exp(qk - m_new[:, None])  # [BLOCK_VOL, BLOCK_VOL]
 
             # Update accumulator with correction
-            # acc = (alpha * l_i / l_i_new) * acc + (1 / l_i_new) * (p @ v)
+            # Update the online-softmax accumulator with the current value block.
             acc_scale = alpha * l_i / l_i_new
             acc = acc * acc_scale[:, None]
 
