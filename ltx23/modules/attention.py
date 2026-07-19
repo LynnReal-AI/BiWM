@@ -303,5 +303,3 @@ class AttentionFunction(Enum):
                 return XFormersAttention()(q, k, v, heads, mask)
             else:
                 return PytorchAttention()(q, k, v, heads, mask)
-
-
