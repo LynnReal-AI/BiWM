@@ -5,7 +5,6 @@
 # Entry: pipelines/wan/infer_stage2.py
 #   - t2v by default; set MODE=i2v + I2V_VIDEO=<mp4> for image/video-to-video continuation.
 #   - Camera: discrete cam-text via ACTION_FRAMES (e.g. "w-8, a-11"); leave empty for random/None.
-#   - Quantized inference: use infer_dmd_nvfp4.sh / infer_dmd_fp8.sh (QAT weights from stage3_*_optional.sh).
 # All values below are env-overridable, e.g.:  GENERATOR_CKPT=... ACTION_FRAMES="w-8, a-11" bash scripts/wan22/infer_dmd.sh
 # =============================================================================
 set -e

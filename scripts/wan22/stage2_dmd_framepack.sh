@@ -8,7 +8,7 @@
 #     · Adaptively selects a tier by history latent frame count (tiny/small/medium/large/xlarge), light near / heavy far;
 #     · Multi-scale spatial conv {1,2,4,8,16}x + frame compression 2x_f are all [learnable parameters], initialized by the main patch_embedding
 #       via trilinear upsampling, trained end-to-end with DMD (TRAIN_MODULES=all already includes history_encoder);
-#     · No LR branch (FramePack tokens are already the full compressed history), uniformly returns (mem_tokens, mem_indices_grid).
+#     · Uniformly returns compressed history as (mem_tokens, mem_indices_grid).
 #   Implementation: pipelines/wan/history_compress_framepack.py
 #
 # ★ Relation between compression tier and history length (K=4 → history T=4·num_blocks):

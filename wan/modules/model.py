@@ -293,7 +293,7 @@ class WanAttentionBlock(nn.Module):
         per_frame_context_lens=None,
         tokens_per_frame=None,
         num_latent_frames=None,
-        positions=None,           # explicit per-token (T,H,W) for packforcing_pretrain RoPE
+        positions=None,           # explicit per-token (T,H,W) for compressed history RoPE
         n_mem=0,                  # number of history mem prefix tokens (for rollout camera control)
     ):
         r"""
@@ -308,7 +308,6 @@ class WanAttentionBlock(nn.Module):
             tokens_per_frame(int, optional): H_patch * W_patch
             num_latent_frames(int, optional): T (= number of target latent frames, excluding mem prefix)
             positions(Tensor, optional): [B, seq_len_eff, 3] per-token (T,H,W) indices.
-                                          packforcing_pretrain mode uses history_indices_grid + Ω real indices.
             n_mem(int, optional): ★ rollout camera control: number of history mem prefix tokens at the start of the sequence.
                                   These n_mem tokens use caption-only context for cross-attn;
                                   the following T*tpf target tokens use per_frame_context (cam-text).
@@ -567,12 +566,9 @@ class WanModel(ModelMixin, ConfigMixin):
         # Camera control kwargs
         action_labels=None,
         cond_latent_frames=0,          # I2V/V2V: number of condition frames (sigma=0 when >0)
-        # Frame Preservation history concat: caller passes HR encoder output (history_kv_tokens) +
-        # LR latent (history_lr_latent); LR is patchified here, concat with HR and prepended.
         history_kv_tokens=None,        # [B, N_hr, dim] HR encoder output (from WanVideoHistoryEncoder)
         history_indices_grid=None,     # [B, 3, N_hr, 2] HR grid (T,H,W) start/end, used for the RoPE midpoint
-        history_lr_latent=None,        # [B, 48, T_lr, H_lr, W_lr] LR latent (separate LR pixel → VAE encode)
-        gen_t_indices_override=None,   # [K] target Ω real indices (for strict RoPE)
+        target_t_indices=None,         # [K] absolute target-frame indices for RoPE
     ):
         r"""
         Forward pass through the diffusion model.
@@ -587,7 +583,7 @@ class WanModel(ModelMixin, ConfigMixin):
             cond_latent_frames (int):  number of condition frames, when >0 condition frames have sigma=0
             history_kv_tokens (Tensor, optional):  [B, N_mem, dim] history encoder output, prepended before the token sequence
             history_indices_grid (Tensor, optional):  [B, 3, N_mem] (T,H,W) position of each mem token within the history latent
-            gen_t_indices_override (Tensor, optional):  [K] packforcing_pretrain Ω indices
+            target_t_indices (Tensor, optional):  [K] absolute target-frame indices
         """
         if self.model_type == 'i2v':
             assert y is not None
@@ -604,66 +600,36 @@ class WanModel(ModelMixin, ConfigMixin):
         grid_sizes = torch.stack(
             [torch.tensor(u.shape[2:], dtype=torch.long) for u in x])
         x = [u.flatten(2).transpose(1, 2) for u in x]
-        # Frame Preservation history concat: HR mem = history_kv_tokens, LR mem = patchified
-        # history_lr_latent; concat into mem_final and prepend to the token sequence (sliced off before head).
+        # Prepend compressed history tokens and build their explicit RoPE positions.
         _N_mem = 0
         positions = None
         if history_kv_tokens is not None:
             assert history_kv_tokens.shape[-1] == self.dim, (
                 f"history_kv_tokens dim {history_kv_tokens.shape[-1]} != self.dim {self.dim}"
             )
-            hr_mem = history_kv_tokens   # [B, N_hr, dim]
-
-            # LR branch: reuse self.patch_embedding on the separate LR latent; HR/LR fused via concat
-            # (no shape constraint). total N_mem = N_hr + N_lr.
-            if history_lr_latent is not None:
-                assert history_lr_latent.shape[1] == self.in_dim, (
-                    f"history_lr_latent channel {history_lr_latent.shape[1]} != in_dim {self.in_dim}"
-                )
-                # self.patch_embedding is nn.Conv3d(in_dim=48, dim=3072, kernel=(1,2,2), stride=(1,2,2))
-                lr_patchified = self.patch_embedding(history_lr_latent.to(self.patch_embedding.weight.dtype))
-                # → [B, dim, T_lr, H_lr, W_lr]
-                _, _, T_lr_p, H_lr_p, W_lr_p = lr_patchified.shape
-                lr_mem = lr_patchified.flatten(2).transpose(1, 2)   # [B, N_lr, dim]
-                # concat fusion, no shape match required
-                mem_final = torch.cat([hr_mem, lr_mem], dim=1)      # [B, N_hr + N_lr, dim]
-            else:
-                mem_final = hr_mem
+            mem_final = history_kv_tokens
             _N_mem = mem_final.shape[1]
             # === build positions: [B, N_mem + N_target, 3] ===
             B = len(x)
-            assert B == 1, "packforcing_pretrain v1 currently only supports B=1 (consistent with the training loop)"
+            assert B == 1, "compressed history currently supports B=1"
             T_t, H_t, W_t = grid_sizes[0].tolist()    # target latent grid
             # mem positions: history_indices_grid is [B, 3, N_mem, 2] (start, end), take the floored midpoint
             assert history_indices_grid is not None, (
-                "packforcing_pretrain mode must pass history_indices_grid (HistoryEncoder._build_indices_grid output)"
+                "compressed history requires history_indices_grid"
             )
             assert history_indices_grid.dim() == 4 and history_indices_grid.shape[1] == 3, (
                 f"history_indices_grid shape should be [B, 3, N_mem, 2], actual {list(history_indices_grid.shape)}"
             )
             hig = history_indices_grid.to(device=x[0].device)
             mem_mid = ((hig[..., 0] + hig[..., 1]) / 2.0).floor().long()    # [B, 3, N_hr]
-            hr_mem_pos = mem_mid.permute(0, 2, 1).contiguous()               # [B, N_hr, 3] (T,H,W)
+            mem_pos = mem_mid.permute(0, 2, 1).contiguous()                  # [B, N_mem, 3] (T,H,W)
 
-            # LR mem positions: T = history latent index; spatial = raster scan after LR patchify
-            if history_lr_latent is not None:
-                _, _, T_lr_p, H_lr_p, W_lr_p = lr_patchified.shape
-                t_lr = torch.arange(T_lr_p, dtype=torch.long, device=x[0].device)
-                h_lr = torch.arange(H_lr_p, dtype=torch.long, device=x[0].device)
-                w_lr = torch.arange(W_lr_p, dtype=torch.long, device=x[0].device)
-                T_g, H_g, W_g = torch.meshgrid(t_lr, h_lr, w_lr, indexing='ij')
-                lr_mem_pos = torch.stack([T_g.flatten(), H_g.flatten(), W_g.flatten()], dim=-1)
-                lr_mem_pos = lr_mem_pos.unsqueeze(0).expand(B, -1, -1).contiguous()  # [B, N_lr, 3]
-                mem_pos = torch.cat([hr_mem_pos, lr_mem_pos], dim=1)         # [B, N_hr+N_lr, 3]
-            else:
-                mem_pos = hr_mem_pos
-
-            # target positions: T uses the Ω real indices (if gen_t_indices_override is given), otherwise 0..T_t-1
-            if gen_t_indices_override is not None:
-                assert gen_t_indices_override.shape[0] == T_t, (
-                    f"gen_t_indices_override len {gen_t_indices_override.shape[0]} != target T {T_t}"
+            # Target T positions use absolute indices when provided, otherwise 0..T_t-1.
+            if target_t_indices is not None:
+                assert target_t_indices.shape[0] == T_t, (
+                    f"target_t_indices len {target_t_indices.shape[0]} != target T {T_t}"
                 )
-                t_idx_target = gen_t_indices_override.to(dtype=torch.long, device=x[0].device)
+                t_idx_target = target_t_indices.to(dtype=torch.long, device=x[0].device)
             else:
                 t_idx_target = torch.arange(T_t, dtype=torch.long, device=x[0].device)
             h_idx = torch.arange(H_t, dtype=torch.long, device=x[0].device)
@@ -674,12 +640,12 @@ class WanModel(ModelMixin, ConfigMixin):
 
             positions = torch.cat([mem_pos, target_pos], dim=1)              # [B, N_mem + N_target, 3]
 
-            # prepend mem_final (HR + LR) before latent tokens
+            # Prepend compressed history tokens before latent tokens.
             x = [torch.cat([mem_final[i:i+1].to(u.dtype), u], dim=1) for i, u in enumerate(x)]
         seq_lens = torch.tensor([u.size(1) for u in x], dtype=torch.long)
         assert seq_lens.max() <= seq_len, (
             f"actual seq_len {seq_lens.max().item()} > declared seq_len {seq_len}. "
-            f"packforcing_pretrain mode: the caller must add history N_mem ({_N_mem}) into seq_len."
+            f"the caller must add history N_mem ({_N_mem}) into seq_len."
         )
         x = torch.cat([
             torch.cat([u, u.new_zeros(1, seq_len - u.size(1), u.size(2))],
@@ -709,8 +675,7 @@ class WanModel(ModelMixin, ConfigMixin):
                 e0 = self.time_projection(e).unflatten(2, (6, self.dim))
                 assert e.dtype == torch.float32 and e0.dtype == torch.float32
         elif _N_mem > 0:
-            # packforcing_pretrain/rollout — the mem prefix is a clean condition,
-            # it must use timestep=0 (cannot share σ with target for AdaLN modulation);
+            # The memory prefix is a clean condition and must use timestep=0;
             # target latent tokens use the real σ. So in e0, the mem segment=t0 and the target segment=σ.
             _sigma_scalar = t.flatten()[0]   # target σ*1000 (scalar)
             per_token_t = torch.cat([
@@ -811,7 +776,7 @@ class WanModel(ModelMixin, ConfigMixin):
             per_frame_context_lens=per_frame_context_lens,
             tokens_per_frame=_tokens_per_frame,
             num_latent_frames=_num_latent_frames,
-            positions=positions,        # explicit RoPE for packforcing_pretrain
+            positions=positions,
             n_mem=_N_mem,               # mem prefix length, cross_attn_ffn uses it to segment
         )
 
@@ -823,8 +788,7 @@ class WanModel(ModelMixin, ConfigMixin):
                 else:
                     x = block(x, **kwargs)
 
-        # in packforcing_pretrain mode, slice off the history mem prefix
-        # head + unpatchify only process the target latent tokens
+        # Head and unpatchify only process the target latent tokens.
         if _N_mem > 0:
             x = x[:, _N_mem:, :]
             # e/e0 must be sliced in sync (head uses e for AdaLN, lengths must match)

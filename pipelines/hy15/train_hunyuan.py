@@ -64,7 +64,7 @@ def action_to_camtext(a: int) -> str:
 
 # 定制系统提示词 —— 相机描述放进 <camera>...</camera>, 其余只写静态画面(无运动/相机)。
 #   设计: 把"相机控制信号"与"静态内容"在文本里显式解耦, 让 MLLM 把相机语义集中在 <camera> 段;
-#   caption 由 VLM 打标已是静态-only(严禁运动/运镜)。uncond(空串)经此模板=系统提示+空用户内容(分布内,
+#   数据集 caption 已是静态-only(严禁运动/运镜)。uncond(空串)经此模板=系统提示+空用户内容(分布内,
 #   不退化)→ 可配 CFG(对齐 minWM 推理 cfg6+空串neg)。crop_start=-1 自动裁掉系统提示 token, 保留用户内容
 #   (含 <camera> 段)的 hidden(其表征已在因果注意力里吸收了系统提示上下文)。
 CAMTEXT_SYS_PROMPT = (

@@ -13,8 +13,7 @@ history_kv_tokens / history_indices_grid path of wan/modules/model.py
 The multi-scale conv is a learnable parameter, initialized by trilinear upsampling of the
 main patch_embedding, and trained end-to-end together with DMD.
 
-Coordinate convention (RoPE position uses patch-grid units, consistent with target
-arange(H_t) / PackForcing LR branch):
+Coordinate convention (RoPE position uses patch-grid units):
   - Main patch_embedding kernel/stride = (1,2,2): latent → patch-grid spatial base stride = 2.
   - framepack spatial scale s∈{1,2,4,8,16}: conv uses stride=(1, 2s, 2s) (latent units) for downsampling,
     but the RoPE position step = s (patch-grid units). I.e. s=1 tokens land at patch coords (0,1,2,...),
@@ -147,7 +146,7 @@ def _pad_space(x: torch.Tensor, mult: int) -> torch.Tensor:
 
 
 class FramePackPastCompressor(nn.Module):
-    """FramePack history compressor (unified interface, replaces / parallel to PackForcing).
+    """FramePack history compressor with a unified memory-token interface.
 
     forward(history_latent [B,48,T,H,W]) -> (mem_tokens [B,N,dim], mem_indices_grid [B,3,N,2])
     """
@@ -180,7 +179,7 @@ class FramePackPastCompressor(nn.Module):
         t_stride = 2 if is_fc else 1                       # number of original latent frames covered by 1 output frame
         spatial_scale = 16 if seg.scale == 32 else seg.scale
         # conv spatial stride in latent units = 2·scale (main patch base stride=2), but the RoPE position
-        # uses patch-grid units (consistent with target arange(H_t) / PackForcing LR branch), so position step = scale.
+        # uses patch-grid units, so position step = scale.
         sp_conv_stride = 2 * spatial_scale                  # conv stride (latent units, used only for padding)
         sp_pos = spatial_scale                              # position step (patch-grid units)
 
@@ -197,7 +196,7 @@ class FramePackPastCompressor(nn.Module):
             return None
         tokens = x.flatten(2).transpose(1, 2).contiguous()  # [B, T'*H'*W', dim]
 
-        # ---- Integer (T,H,W) bounds (latent units), same convention as PackForcing ----
+        # ---- Integer (T,H,W) bounds in latent units ----
         dev = x.device
         t_idx = torch.arange(Tp, device=dev, dtype=torch.float32)
         t_start = frame_start_abs + t_idx * t_stride

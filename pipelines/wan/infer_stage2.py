@@ -12,7 +12,6 @@ import argparse
 import math
 import os
 import random
-import time
 
 import numpy as np
 import torch
@@ -81,9 +80,9 @@ def unroll_chunk(model, prefix, caption_emb, al_window, sched,
             return v_full[:, :, n_hist:, :, :]                  # take only the current chunk
         else:
             seq_len = chunk_size * tpf
-            gen_t = torch.arange(0, chunk_size, device=device, dtype=torch.float32)
+            target_t = torch.arange(0, chunk_size, device=device, dtype=torch.float32)
             return _dit_velocity_field(model, x_cur, s, caption_emb, seq_len,
-                                         gen_t=gen_t, action_labels=al_window)
+                                         target_t_indices=target_t, action_labels=al_window)
 
     x_t = torch.randn(batch, C, chunk_size, H, W, device=device, dtype=dtype)
     x0 = None
@@ -151,34 +150,14 @@ def main():
     ap.add_argument("--dmd_sigmas", type=float, nargs="+", default=[1.0, 0.75, 0.5, 0.25],
                     help="4-step starting sigma (before shift; trailing 0.0 implied)")
     ap.add_argument("--sigma_shift", type=float, default=5.0)
-    # NVFP4 quantized inference (requires the QAT weights from stage3_nvfp4.sh; true speedup needs Blackwell + a real FP4 kernel)
-    ap.add_argument("--nvfp4", action="store_true", help="enable generator NVFP4 fake-quant inference (numerically aligned, no speedup on non-Blackwell)")
-    ap.add_argument("--nvfp4_kernel", default=None,
-                    help="real FP4 kernel inference: point to the packed-FP4 .safetensors exported by nvfp4_pack_ckpt.py (requires Blackwell)")
-    ap.add_argument("--nvfp4_block_size", type=int, default=16)
-    ap.add_argument("--nvfp4_quantize_activations", action="store_true",
-                    help="NVFP4 also quantizes activations (W4A4); default off=only quantize weights W4A16 (FP4 activations degrade quality severely)")
-    ap.add_argument("--nvfp4_skip_modules", type=str, nargs="*",
-                    default=["text_embedding", "time_embedding", "time_projection", "head"])
-    # FP8 quantized inference (Hopper/H200: has FP8 tensor cores; use the QAT weights from stage3_fp8.sh)
-    ap.add_argument("--fp8", action="store_true", help="FP8 fake-quant inference (numerically aligned, any GPU, no speedup)")
-    ap.add_argument("--fp8_kernel", action="store_true", help="FP8 real GEMM inference (torch._scaled_mm, H200 speedup)")
-    ap.add_argument("--fp8_weight_only", action="store_true", help="only quantize weights, not activations")
-    ap.add_argument("--fp8_skip_modules", type=str, nargs="*",
-                    default=["text_embedding", "time_embedding", "time_projection", "head"])
-    # torch.compile: fuse the quantization amax/cast + reduce kernel launch overhead, so FP8 actually realizes the weight-bandwidth gain
-    ap.add_argument("--torch_compile", action="store_true", help="torch.compile generator (fuse FP8 quantization ops)")
-    ap.add_argument("--compile_mode", default="default",
-                    help="torch.compile mode: default / reduce-overhead(CUDA graph) / max-autotune")
     # resolution
     ap.add_argument("--num_height", type=int, default=480)
     ap.add_argument("--num_width", type=int, default=832)
     # output
     ap.add_argument("--output", default="./outputs/dmd_infer.mp4")
-    ap.add_argument("--report_tag", default="", help="label for the [Report] line (used by the quantization comparison script; default=mode)")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--batch_size", type=int, default=1,
-                    help="generate B videos in parallel (throughput test: B>1 raises arithmetic intensity so FP8 gets a compute-bound speedup)")
+                    help="generate B videos in parallel")
     ap.add_argument("--decode_seg_latent", type=int, default=0,
                     help="[deprecated/ignored] the Wan VAE is causal+cache, a single decode suffices; the buggy segment-wise decode has been removed")
     ap.add_argument("--control", action="store_true",
@@ -248,49 +227,6 @@ def main():
     print(f"[Infer] generator <- {ckpt_file}: loaded {len(sd)} tensors, missing={len(miss)}, unexpected={len(unexp)}")
     model = model.to(device=device, dtype=dtype).eval()
     model.precompute_cam_text_embeddings(encode_fn, device, dtype)    # cam-text (bf16), consistent with training
-    # NVFP4 fake-quant (numerical alignment; true speedup needs a real FP4 kernel/export on Blackwell)
-    if args.nvfp4:
-        from pipelines.common.nvfp4 import NVFP4Config, enable_nvfp4_quantization, toggle_nvfp4_quantization
-        _cfg = NVFP4Config(block_size=args.nvfp4_block_size,
-                           quantize_activations=args.nvfp4_quantize_activations,
-                           skip_modules=tuple(args.nvfp4_skip_modules or ()))
-        _rep = enable_nvfp4_quantization(model, _cfg)
-        toggle_nvfp4_quantization(model, True)
-        print(f"[Infer][NVFP4] fake-quant enabled: replaced {len(_rep)} nn.Linear layers→NVFP4Linear "
-              f"(block={_cfg.block_size}, quant_act={_cfg.quantize_activations})")
-    # real FP4 kernel inference (Blackwell): use packed-FP4 weights exported by nvfp4_pack_ckpt.py
-    if getattr(args, "nvfp4_kernel", None):
-        from pipelines.common.nvfp4_kernel import read_nvfp4_kernel_checkpoint, nvfp4_kernel_present
-        _ksd = safetensors.torch.load_file(args.nvfp4_kernel, device="cpu")
-        _krep = read_nvfp4_kernel_checkpoint(model, _ksd, skip_modules=tuple(args.nvfp4_skip_modules or ()))
-        model = model.to(device=device)   # move packed-FP4 buffers to GPU (uint8/fp8 dtype protected by _apply)
-        print(f"[Infer][NVFP4-Kernel] loaded packed-FP4 {args.nvfp4_kernel}: replaced {len(_krep)} layers; "
-              f"lightx2v_kernel available={nvfp4_kernel_present()}")
-        if not nvfp4_kernel_present():
-            print("[Infer][NVFP4-Kernel] ⚠ non-Blackwell / lightx2v_kernel not installed: forward will error "
-                  "(only for export+load verification; real FP4 speedup needs Blackwell sm120)")
-    # FP8 fake-quant (numerically aligned, runs on any GPU but no speedup)
-    if getattr(args, "fp8", False):
-        from pipelines.common.fp8quant import FP8Config, enable_fp8_quantization, toggle_fp8_quantization
-        _fcfg = FP8Config(quantize_activations=not args.fp8_weight_only,
-                          skip_modules=tuple(args.fp8_skip_modules or ()))
-        _frep = enable_fp8_quantization(model, _fcfg)
-        toggle_fp8_quantization(model, True)
-        print(f"[Infer][FP8] fake-quant enabled: replaced {len(_frep)} layers (quant_act={_fcfg.quantize_activations})")
-    # FP8 real GEMM (Hopper/H200): torch._scaled_mm, true speedup
-    if getattr(args, "fp8_kernel", False):
-        from pipelines.common.fp8quant import enable_fp8_kernel_quantization, fp8_scaled_mm_present
-        _krep = enable_fp8_kernel_quantization(model, skip_modules=tuple(args.fp8_skip_modules or ()))
-        model = model.to(device=device)
-        print(f"[Infer][FP8-Kernel] torch._scaled_mm FP8 GEMM enabled: replaced {len(_krep)} layers; "
-              f"_scaled_mm available={fp8_scaled_mm_present()} (auto fallback to bf16 on failure)")
-    # torch.compile: fuse quantization ops (amax/cast) + reduce kernel launch overhead; dynamic shape
-    if getattr(args, "torch_compile", False):
-        print(f"[Infer] torch.compile(generator, mode={args.compile_mode}) ... first forward compiles (slow), accelerated afterwards", flush=True)
-        try:
-            model = torch.compile(model, mode=args.compile_mode, dynamic=True)
-        except Exception as _ce:
-            print(f"[Infer] torch.compile failed, fall back to eager: {_ce}", flush=True)
     vae_encoder, vae_decoder = init_wan_vae(args.wan_base, device, dtype, version=version)
 
     # caption embedding (no CFG, the generator needs no neg); expand to B when batch>1
@@ -343,15 +279,7 @@ def main():
     # permanently kept (attention sink, StreamingLLM style). Window not full -> all history; window full ->
     # [first sink_n] + [most recent (max_ctx-sink_n)], middle discarded. prefix/al_window gather the same absolute indices.
     sink_n_cap = max(0, args.sink_chunks) * chunk_size      # sink: number of leading frames permanently kept
-    # timing + peak memory (for quantization comparison)
-    if torch.cuda.is_available():
-        torch.cuda.synchronize(device); torch.cuda.reset_peak_memory_stats(device)
-    _t_roll0 = time.time()
-    _chunk_t = []                       # per-chunk time (steady-state ms/chunk, excluding the first 2 that include compile)
     for c in range(num_chunks):
-        if torch.cuda.is_available():
-            torch.cuda.synchronize(device)
-        _tc = time.time()
         start = clean_lat.shape[2] if clean_lat is not None else 0
         if clean_lat is not None and max_ctx_frames > 0:
             total_hist = clean_lat.shape[2]
@@ -375,26 +303,14 @@ def main():
             al_window = full_labels[:, start: start + chunk_size]
         x0 = unroll_chunk(model, prefix, caption_emb, al_window, sched,
                            chunk_size, C, Hl, Wl, tpf, device, dtype, batch=_B)
-        if torch.cuda.is_available():
-            torch.cuda.synchronize(device)
-        _chunk_t.append(time.time() - _tc)
         clean_lat = x0 if clean_lat is None else torch.cat([clean_lat, x0], dim=2)
         if c % 5 == 0 or c == num_chunks - 1:
             print(f"[Infer] chunk {c+1}/{num_chunks} done | total_latent={clean_lat.shape[2]} "
                   f"| n_hist={n_hist} | x0 std={x0.float().std().item():.3f}", flush=True)
 
-    if torch.cuda.is_available():
-        torch.cuda.synchronize(device)
-    _rollout_s = time.time() - _t_roll0
-
     # VAE decode (single causal pass, feat_cache throughout) + save
     print(f"[Infer] VAE decode (single causal pass, {clean_lat.shape[2]} latent, batch={_B} decode only item 0) ...")
-    _t_dec0 = time.time()
-    frames = wan_vae_reconstruct(vae_decoder, clean_lat[0], device)   # batch>1 decode only item 0; speed measured on rollout
-    if torch.cuda.is_available():
-        torch.cuda.synchronize(device)
-    _decode_s = time.time() - _t_dec0
-    _peak_gb = (torch.cuda.max_memory_allocated(device) / 1e9) if torch.cuda.is_available() else 0.0
+    frames = wan_vae_reconstruct(vae_decoder, clean_lat[0], device)   # batch>1 decodes only item 0
     print(f"[Infer] decoded {len(frames)} frames ({len(frames)/args.fps:.1f}s @ {args.fps}fps)")
 
     # save two videos: (1) joystick-free original -> args.output; (2) joystick-overlaid -> <output>_control.mp4 (unless --no_control)
@@ -409,18 +325,6 @@ def main():
         _js_path = os.path.splitext(args.output)[0] + "_control.mp4"
         store_video(frames_js, _js_path, fps=int(round(args.fps)))
         print(f"[Infer] ✓ saved (with joystick): {_js_path}")
-
-    # quantization comparison report (speed/memory); steady = median ms/chunk excluding the first 2 (compile/warmup)
-    import statistics as _st
-    _tag = getattr(args, 'report_tag', '') or args.mode
-    _ms_chunk = _rollout_s / max(1, num_chunks) * 1000.0
-    _tail = _chunk_t[2:] if len(_chunk_t) > 2 else _chunk_t
-    _steady_ms = (_st.median(_tail) * 1000.0) if _tail else _ms_chunk
-    _per_video = _steady_ms / _B    # batch>1: steady-state ms/chunk per video (throughput metric)
-    print(f"[Report] tag={_tag} batch={_B} chunks={num_chunks} rollout={_rollout_s:.2f}s "
-          f"({_ms_chunk:.1f}ms/chunk) steady={_steady_ms:.1f}ms/chunk pervideo={_per_video:.1f}ms/chunk "
-          f"decode={_decode_s:.2f}s peak_mem={_peak_gb:.2f}GB out={args.output}", flush=True)
-
 
 if __name__ == "__main__":
     main()

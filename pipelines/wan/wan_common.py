@@ -231,14 +231,6 @@ def inject_lora_into_wan(transformer: nn.Module, args) -> nn.Module:
         _swap_in_lora(parent, child, base_lin, rank, alpha)
         wrapped.append((full_name, match))
 
-    # enable patch_embedding gradients (used by the history LR branch)
-    _unfrozen_extra = []
-    if hasattr(transformer, 'patch_embedding'):
-        for p in transformer.patch_embedding.parameters():
-            p.requires_grad = True
-        _unfrozen_extra.append(('patch_embedding',
-                                sum(p.numel() for p in transformer.patch_embedding.parameters())))
-
     n_trainable = sum(p.numel() for p in transformer.parameters() if p.requires_grad)
     n_total = sum(p.numel() for p in transformer.parameters())
     print(f"[LoRA-manual] rank={rank} alpha={alpha} scaling={alpha/rank:.3f}")
@@ -251,9 +243,6 @@ def inject_lora_into_wan(transformer: nn.Module, args) -> nn.Module:
         for t in targets:
             if by_target.get(t, 0) == 0:
                 print(f"           NO MATCH {t}")
-    if _unfrozen_extra:
-        for _name, _n in _unfrozen_extra:
-            print(f"[LoRA-manual] extra unfreeze {_name}: {_n/1e6:.2f}M params")
     print(f"[LoRA-manual] trainable {n_trainable/1e6:.2f}M / {n_total/1e6:.1f}M total")
     return transformer
 

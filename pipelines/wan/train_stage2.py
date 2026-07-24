@@ -903,9 +903,8 @@ def _carry_stage1_into_stage2(transformer, history_encoder, stage1_ckpt, device)
     if len(_unexpected) > 0:
         print(f"[Stage2-Load] ⚠ unexpected keys first 5: {_unexpected[:5]}", flush=True)
     # history_encoder
-    # HE file is optional —— stage1 (train_stage1.py, non-autoregressive base) has no history_encoder,
-    #   skip when history_encoder.safetensors does not exist (HE keeps random init, trained by DMD multi-block rollout),
-    #   instead of raising. (Old logic required HE to exist, which only applies when inheriting from packforcing rollout_pretrain.)
+    # HE file is optional: stage1 has no history_encoder, so keep the random initialization
+    # when the checkpoint does not contain one.
     if history_encoder is not None:
         if not _os.path.exists(_he_path):
             print(f"[Stage2-Load] ⚠ history_encoder ckpt does not exist ({_he_path}); "
@@ -1051,28 +1050,6 @@ def _dmd_evaluate(generator, history_encoder, real_score, vae_decoder, args, cap
         gen_frames = _decode_overlay(x0_gen)
         store_video(gen_frames, os.path.join(output_dir, f"dmd_val_step{step:08d}_rank{rank}_gen4step.mp4"), fps=fps)
 
-        # quantization-effect check: same seed, run gen with quant-OFF(bf16) vs quant-ON, save side-by-side video.
-        _quant_set = None
-        if getattr(args, 'dmd_nvfp4', False):
-            from pipelines.common.nvfp4 import toggle_nvfp4_quantization as _quant_set
-            _qtag = "NVFP4"
-        elif getattr(args, 'dmd_fp8', False):
-            from pipelines.common.fp8quant import toggle_fp8_quantization as _quant_set
-            _qtag = "FP8"
-        if _quant_set is not None:
-            _rng = torch.random.get_rng_state()
-            _quant_set(generator, False); torch.manual_seed(12345 + step)
-            x0_bf16, _, _, _ = student_rollout(generator, history_encoder, args, cap_emb,
-                                                 full_labels, latent_shape, device, dtype, train_mode=False)
-            _quant_set(generator, True); torch.manual_seed(12345 + step)
-            x0_q, _, _, _ = student_rollout(generator, history_encoder, args, cap_emb,
-                                              full_labels, latent_shape, device, dtype, train_mode=False)
-            torch.random.set_rng_state(_rng)
-            if rank == 0:
-                stitch_videos_with_labels(_decode_overlay(x0_bf16), _decode_overlay(x0_q),
-                                           os.path.join(output_dir, f"dmd_val_step{step:08d}_rank{rank}_quantgap.mp4"),
-                                           "Gen-BF16", f"Gen-{_qtag}", fps=fps)
-
         # 1b. diagnosis: generator runs 50-step CFG on the first block (no history, single block of K latent).
         #   FSDP: all ranks must run the generator forward (collective), only rank0 does decode/save.
         _K1 = int(args.dmd_block_K)
@@ -1162,30 +1139,6 @@ def execute_dmd_distillation(args, generator, history_encoder, vae_encoder, vae_
                 _gm, _gu = generator.load_state_dict(_mapped, strict=False)
                 echo_on_main_rank(f"[DMD] generator base <- teacher: mapped {len(_mapped)}/{len(_raw)} tensors, "
                                       f"missing={len(_gm)}, unexpected={len(_gu)}")
-
-    # quantization-aware training (QAT) — generator nn.Linear fake-quant (★must be before FSDP wrap).
-    #   NVFP4 (Blackwell/5090 FP4 kernel) or FP8 (Hopper/H200 FP8 kernel), choose one; after wrap the generator runs in
-    #   quantized state (student) throughout, and the generator update adds a BF16↔quantized self-distillation KL (see below).
-    _use_nvfp4 = bool(getattr(args, 'dmd_nvfp4', False))
-    _use_fp8 = bool(getattr(args, 'dmd_fp8', False))
-    if _use_nvfp4 and _use_fp8:
-        raise ValueError("--dmd_nvfp4 and --dmd_fp8 are mutually exclusive, only one can be enabled (NVFP4=Blackwell, FP8=Hopper)")
-    if _use_nvfp4:
-        from pipelines.wan.dmd_core import enclose_generator_nvfp4
-        _nvfp4_replaced, _nvfp4_cfg = enclose_generator_nvfp4(generator, args)
-        echo_on_main_rank(
-            f"[DMD-NVFP4] generator nn.Linear→NVFP4Linear: replaced {len(_nvfp4_replaced)} layers, "
-            f"block={_nvfp4_cfg.block_size}, quant_act={_nvfp4_cfg.quantize_activations}, skip={_nvfp4_cfg.skip_modules}; "
-            f"KL w={getattr(args,'nvfp4_kl_weight',0.03)} flow={getattr(args,'nvfp4_flow_weight',1.0)} "
-            f"x0={getattr(args,'nvfp4_x0_weight',0.25)} warmup={getattr(args,'nvfp4_warmup_steps',0)}")
-    if _use_fp8:
-        from pipelines.wan.dmd_core import enclose_generator_fp8
-        _fp8_replaced, _fp8_cfg = enclose_generator_fp8(generator, args)
-        echo_on_main_rank(
-            f"[DMD-FP8] generator nn.Linear→FP8Linear: replaced {len(_fp8_replaced)} layers, "
-            f"quant_act={_fp8_cfg.quantize_activations}, skip={_fp8_cfg.skip_modules}; "
-            f"KL w={getattr(args,'fp8_kl_weight',0.03)} flow={getattr(args,'fp8_flow_weight',1.0)} "
-            f"x0={getattr(args,'fp8_x0_weight',0.25)} warmup={getattr(args,'fp8_warmup_steps',0)}")
 
     # 2. real_score (independent frozen teacher) + fake_score (independent critic, full-parameter online update)
     #    the two are independent, both initialized from the teacher ckpt, without LoRA / without memory module.
@@ -1447,22 +1400,6 @@ def execute_dmd_distillation(args, generator, history_encoder, vae_encoder, vae_
                                                     latent_shape, _Tg, args, current_device, dtype)
                     gloss = gloss + _fkl_w * _fkl.to(gloss.dtype)
                     _l_fkl = float(_fkl.detach())
-                # quantization self-distillation KL —— student(quantized) aligns with BF16(itself) output, resists quantization quality drop.
-                _nvfp4_kl_val = float('nan')
-                if _use_nvfp4 and global_step >= getattr(args, 'nvfp4_warmup_steps', 0)\
-                        and getattr(args, 'nvfp4_kl_weight', 0.0) > 0:
-                    from pipelines.wan.dmd_core import calc_nvfp4_kl
-                    _nvfp4_kl, _nvfp4_log = calc_nvfp4_kl(generator, x0_g, cap_emb, full_labels,
-                                                             args, current_device)
-                    gloss = gloss + float(args.nvfp4_kl_weight) * _nvfp4_kl.to(gloss.dtype)
-                    _nvfp4_kl_val = float(_nvfp4_kl.detach())
-                if _use_fp8 and global_step >= getattr(args, 'fp8_warmup_steps', 0)\
-                        and getattr(args, 'fp8_kl_weight', 0.0) > 0:
-                    from pipelines.wan.dmd_core import calc_fp8_kl
-                    _fp8_kl, _fp8_log = calc_fp8_kl(generator, x0_g, cap_emb, full_labels,
-                                                       args, current_device)
-                    gloss = gloss + float(args.fp8_kl_weight) * _fp8_kl.to(gloss.dtype)
-                    _nvfp4_kl_val = float(_fp8_kl.detach())   # reuse the same print field
                 (gloss / _accum).backward()                      # ★ accumulate: scale loss by 1/N
                 gloss_val = gloss.item()
                 if _gen_micro == _accum - 1:                      # accumulated N gen-updates → clip + step
@@ -1492,8 +1429,6 @@ def execute_dmd_distillation(args, generator, history_encoder, vae_encoder, vae_
                 _extra = ""
                 if _use_gt_reg and _is_gen_step and isinstance(_gi, dict) and 'gt_reg' in _gi:
                     _extra += f" gt_reg={_gi['gt_reg']:.4f}"
-                if (_use_nvfp4 or _use_fp8) and _is_gen_step and not math.isnan(_nvfp4_kl_val):
-                    _extra += f" {'fp8' if _use_fp8 else 'nvfp4'}_kl={_nvfp4_kl_val:.4f}"
                 if _is_gen_step:   # ★ SFT / forward-KL anchoring terms
                     if not math.isnan(_l_sft):  _extra += f" sft={_l_sft:.4f}"
                     if not math.isnan(_l_fkl):  _extra += f" fkl={_l_fkl:.4f}"
@@ -1634,13 +1569,6 @@ def main(args: argparse.Namespace) -> None:
             dist.barrier()
         return
 
-    # ★ Stage 2 inherits Stage 1: load LoRA-wrapped transformer state + history_encoder
-    # Must be before FSDP wrap (at this point transformer has apply_lora, keys contain .lora_A/.lora_B to match the Stage1 ckpt)
-    _stage1_ckpt = getattr(args, 'stage1_ckpt', None)
-    if getattr(args, 'rollout_pretrain', False) and _stage1_ckpt:
-        echo_on_main_rank(f"[Stage2] inherit Stage 1 ckpt: {_stage1_ckpt}")
-        _carry_stage1_into_stage2(transformer, history_encoder, _stage1_ckpt, current_device)
-
     # Text encoder offload + sharing
     offload_te = getattr(args, 'offload_text_encoder', False)
     if offload_te:
@@ -1659,9 +1587,6 @@ def main(args: argparse.Namespace) -> None:
 
     # Note: torch.compile on Wan VAE is NOT supported
     # (causal conv cache conflicts with CUDAGraphs)
-
-    # === Caption Refine VLM ===
-        dist.barrier()
 
     # === Resume ===
     resumed_step = 0
@@ -1721,8 +1646,7 @@ def main(args: argparse.Namespace) -> None:
     transformer = enclose_wan_model_with_fsdp(transformer, args, current_device)
 
     # === Optimizer ===
-    # packforcing_pretrain/rollout mode must add history_encoder parameters into the optimizer
-    # otherwise HE parameter grads are computed but not updated → HR abs never changes (HR encoder does not learn)
+    # Add the history compressor parameters so FramePack trains end-to-end with DMD.
     _extra_params = None
     if history_encoder is not None:
         _he_params = [p for p in history_encoder.parameters() if p.requires_grad]
@@ -1818,46 +1742,27 @@ def main(args: argparse.Namespace) -> None:
 
             step_start_time = time.time()
 
-            # Set current step for camera warmup + packforcing_pretrain Mem ratio print
-            # packforcing_pretrain mode sets _current_train_step on the WanModel top level,
-            # so the [FrameQuery-Mem step=N] print shows the real step instead of 0
-            _relative_step = global_step - resumed_step
-            for _blk in transformer.modules():
-                if hasattr(_blk, '_current_train_step'):
-                    _blk._current_train_step = _relative_step
-            # After FSDP wrap, the transformer top level is FSDP, but the inner self._fsdp_wrapped_module is the real WanModel
-            _root = transformer
-            if hasattr(_root, '_fsdp_wrapped_module'):
-                _root = _root._fsdp_wrapped_module
-            if hasattr(_root, 'module'):
-                _root = _root.module
-            _root._current_train_step = global_step
-
-            # Regular DMD training step (PackForcing pretrain / rollout is held out of this release).
-            if getattr(args, 'packforcing_pretrain', False) or getattr(args, 'rollout_pretrain', False):
-                raise RuntimeError("PackForcing pretrain / rollout training is not available in this release.")
-            else:
-                (step_loss, gradient_norm, last_prompt, last_camera_kwargs,
-                 last_task_type, last_cond_end, last_cond_latent, last_gt_video_latent,
-                 last_source, last_caption_type, last_K_ctrl, last_c2w_ctrl,
-                 last_K_ctrl_raw, last_c2w_ctrl_raw, last_video_id,
-                 last_sigma, last_gt_pixel_frames) = perform_single_training_step(
-                    transformer=transformer,
-                    optimizer=optimizer,
-                    lr_scheduler=lr_scheduler,
-                    vae_encoder=vae_encoder,
-                    text_encoder=text_encoder,
-                    encode_fn=encode_fn,
-                    gradient_accumulation_steps=args.gradient_accumulation_steps,
-                    device=current_device,
-                    args=args,
-                    current_step=global_step,
-                    distributed_rank=global_rank,
-                    world_size=world_size,
-                    max_gradient_norm=args.max_grad_norm,
-                    data_item_override=data_item,
-                    vae_decoder=vae_decoder,
-                )
+            (step_loss, gradient_norm, last_prompt, last_camera_kwargs,
+             last_task_type, last_cond_end, last_cond_latent, last_gt_video_latent,
+             last_source, last_caption_type, last_K_ctrl, last_c2w_ctrl,
+             last_K_ctrl_raw, last_c2w_ctrl_raw, last_video_id,
+             last_sigma, last_gt_pixel_frames) = perform_single_training_step(
+                transformer=transformer,
+                optimizer=optimizer,
+                lr_scheduler=lr_scheduler,
+                vae_encoder=vae_encoder,
+                text_encoder=text_encoder,
+                encode_fn=encode_fn,
+                gradient_accumulation_steps=args.gradient_accumulation_steps,
+                device=current_device,
+                args=args,
+                current_step=global_step,
+                distributed_rank=global_rank,
+                world_size=world_size,
+                max_gradient_norm=args.max_grad_norm,
+                data_item_override=data_item,
+                vae_decoder=vae_decoder,
+            )
 
             step_duration = time.time() - step_start_time
 
@@ -1921,34 +1826,6 @@ def main(args: argparse.Namespace) -> None:
                 echo_on_main_rank(f"{'='*60}")
 
                 free_gpu_memory()
-
-                # ★ packforcing_pretrain / rollout modes go through their own dedicated validation
-                if getattr(args, 'packforcing_pretrain', False) or getattr(args, 'rollout_pretrain', False):
-                    try:
-                        raise RuntimeError("PackForcing pretrain / rollout validation is not available in this release.")
-                    except Exception as _val_err:
-                        import traceback
-                        echo_on_main_rank(f"[Validation] packforcing_pretrain/rollout validation failed: {_val_err}")
-                        traceback.print_exc()
-                    # bug fix: save must not be skipped by validation's continue!
-                    # If checkpointing_steps is a multiple of validation_interval (e.g. 100/50),
-                    # every ckpt step coincides with validation, and continue would make the checkpoint never save.
-                    # So check save before continue.
-                    if global_step % args.checkpointing_steps == 0 and global_step > 0:
-                        echo_on_main_rank(f"[Checkpoint] Saving step={global_step} (validation step)")
-                        try:
-                            free_gpu_memory()
-                            store_checkpoint(transformer, global_rank, args.output_dir, global_step)
-                            _store_history_encoder(history_encoder, global_rank, args.output_dir, global_step)
-                            dist.barrier()
-                            echo_on_main_rank(f"[Checkpoint] Saved step={global_step}")
-                        except Exception as _ce:
-                            print(f"[Rank {global_rank}] Checkpoint save failed: {_ce}", flush=True)
-                            import traceback
-                            traceback.print_exc()
-                    # after validation, skip t2v sampling; global_step += 1 before continue (otherwise infinite loop)
-                    global_step += 1
-                    continue
 
                 validation_prompt = last_prompt if last_prompt else "A beautiful sunset over the ocean."
                 val_height = getattr(args, 'validation_height', args.num_height)
@@ -2109,8 +1986,6 @@ def parse_cli_options() -> argparse.Namespace:
                         help="videos_syn.json (list, index==6-digit id, contains caption + action_frames)")
 
     # ===== Training config =====
-    parser.add_argument("--stage1_ckpt", type=str, default=None,
-                       help="★ Stage 2 inherits Stage 1's checkpoint-N directory (load LoRA + history_encoder)")
     parser.add_argument("--train_batch_size", type=int, default=1)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
     parser.add_argument("--max_train_epochs", type=int, default=100)
@@ -2200,8 +2075,6 @@ def parse_cli_options() -> argparse.Namespace:
     parser.add_argument("--torch_compile", action="store_true", help="torch.compile VAE for memory savings")
     parser.add_argument("--vae_tiling", action="store_true")
     parser.add_argument("--enable_memory_efficient_attention", action="store_true")
-
-    # ===== Caption Refine =====
 
     # ===== Debug =====
     parser.add_argument("--debug", type=lambda x: x.lower() == 'true', default=False)

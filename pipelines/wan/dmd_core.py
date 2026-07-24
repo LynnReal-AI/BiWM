@@ -70,33 +70,6 @@ def register_dmd_args(parser):
     g.add_argument("--dmd_history_mode", type=str, default=None,
                    choices=["none", "framepack"],
                    help="DMD multi-block history compression mechanism: none/framepack")
-    # NVFP4 quantization-aware training (QAT): fake-quant generator nn.Linear + BF16↔NVFP4 self-distillation KL
-    g.add_argument("--dmd_nvfp4", action="store_true", default=False,
-                   help="enable generator NVFP4 quantization-aware training (fake-quant + self-distillation KL)")
-    g.add_argument("--nvfp4_block_size", type=int, default=16, help="NVFP4 quantization block size")
-    g.add_argument("--nvfp4_quantize_activations", action="store_true", default=False,
-                   help="NVFP4 also quantizes activations (W4A4); default off = quantize weights only W4A16 (FP4 activations have outliers, severe accuracy loss; reference config quantize_activations:false)")
-    g.add_argument("--nvfp4_kl_weight", type=float, default=0.03,
-                   help="total weight of the quantization self-distillation KL (empirically: 0.1/0.5 too strong -> purple tint, 0.03 recommended)")
-    g.add_argument("--nvfp4_flow_weight", type=float, default=1.0, help="weight of the flow(velocity) term in the KL")
-    g.add_argument("--nvfp4_x0_weight", type=float, default=0.25, help="weight of the x0 term in the KL (directly constrains low-frequency/color)")
-    g.add_argument("--nvfp4_temperature", type=float, default=1.0, help="KL softmax temperature")
-    g.add_argument("--nvfp4_warmup_steps", type=int, default=0, help="do not add KL for the first N steps (let the generator stabilize first)")
-    g.add_argument("--nvfp4_skip_modules", type=str, nargs="*",
-                   default=["text_embedding", "time_embedding", "time_projection", "head"],
-                   help="module names to skip quantization (substring match); default protects sensitive small layers like embedding/head")
-    # FP8(E4M3) QAT (Hopper/H200): isomorphic to NVFP4, mutually exclusive with --dmd_nvfp4
-    g.add_argument("--dmd_fp8", action="store_true", default=False,
-                   help="enable generator FP8 quantization-aware training (H200; mutually exclusive with --dmd_nvfp4)")
-    g.add_argument("--fp8_weight_only", action="store_true", default=False, help="quantize weights only, not activations")
-    g.add_argument("--fp8_kl_weight", type=float, default=0.03, help="total weight of the FP8 self-distillation KL")
-    g.add_argument("--fp8_flow_weight", type=float, default=1.0, help="weight of the KL flow(velocity) term")
-    g.add_argument("--fp8_x0_weight", type=float, default=0.25, help="weight of the KL x0 term")
-    g.add_argument("--fp8_temperature", type=float, default=1.0, help="KL softmax temperature")
-    g.add_argument("--fp8_warmup_steps", type=int, default=0, help="do not add KL for the first N steps")
-    g.add_argument("--fp8_skip_modules", type=str, nargs="*",
-                   default=["text_embedding", "time_embedding", "time_projection", "head"],
-                   help="module names to skip FP8 quantization (substring match)")
     return parser
 
 
@@ -155,8 +128,8 @@ def determine_history_mode(args) -> str:
 
 
 def _dit_velocity_field(transformer, x_5d, sigma, context_emb, seq_len,
-                          hr_mem=None, mem_idx=None, lr_lat=None,
-                          gen_t=None, action_labels=None, cond_latent_frames=0):
+                          mem_tokens=None, mem_indices=None,
+                          target_t_indices=None, action_labels=None, cond_latent_frames=0):
     """uniform wrapper for the Wan transformer forward -> velocity [B,48,F,H,W]. Supports batch B>1.
     cond_latent_frames>0: the first N frames are clean conditioning frames (t=0), only later frames denoised by σ."""
     t_in = (sigma if torch.is_tensor(sigma) else torch.tensor([sigma], device=x_5d.device))
@@ -166,8 +139,8 @@ def _dit_velocity_field(transformer, x_5d, sigma, context_emb, seq_len,
     out = transformer(
         x=x_list, t=t_in, context=ctx_list, seq_len=seq_len,
         cond_latent_frames=cond_latent_frames,
-        history_kv_tokens=hr_mem, history_indices_grid=mem_idx,
-        history_lr_latent=lr_lat, gen_t_indices_override=gen_t,
+        history_kv_tokens=mem_tokens, history_indices_grid=mem_indices,
+        target_t_indices=target_t_indices,
         action_labels=action_labels,
     )
     return torch.stack(out) if isinstance(out, (list, tuple)) else out
@@ -209,13 +182,12 @@ def student_rollout(generator, history_encoder, args, caption_emb,
     # DMD noising lower bound = sigma the generator denoised to (next sigma after grad_step); last step -> 0 = full range
     denoised_to_sigma = float(sched[grad_step + 1]) if (train_mode and 0 <= grad_step < n_steps) else 0.0
 
-    # multi-block history compression: none / packforcing / framepack
+    # multi-block history compression: none / framepack
     hist_mode = determine_history_mode(args)
     if hist_mode != 'none' and history_encoder is None:
         raise RuntimeError(f"dmd_history_mode={hist_mode} but history_encoder=None: please build the compressor by mode in "
-                           f"setup_wan_model (packforcing/framepack)")
+                           f"setup_wan_model")
     use_compress = (hist_mode != 'none') and (history_encoder is not None)
-    use_lr_branch = (hist_mode == 'packforcing')   # only PackForcing additionally goes through the model's LR branch
 
     generated_detached = []   # next block's history (detached, not chained into the graph)
     x0_blocks = []            # with gradient, concatenated into x0_gen for DMD
@@ -230,21 +202,19 @@ def student_rollout(generator, history_encoder, args, caption_emb,
             al_b0 = full_action_labels[:, 0:K] if full_action_labels is not None else None
             def _vel(x_cur, s, _sl=seq_len0, _gt=gen_t0, _al=al_b0):
                 return _dit_velocity_field(generator, x_cur, s, caption_emb, _sl,
-                                             gen_t=_gt, action_labels=_al)
+                                             target_t_indices=_gt, action_labels=_al)
         elif use_compress:
-            # compress all generated frames -> (mem_tokens, mem_indices_grid); packforcing also sends latent through the LR branch
+            # compress all generated frames -> (mem_tokens, mem_indices_grid)
             hist = torch.cat(generated_detached, dim=2).contiguous()
-            hr_mem, mem_idx = history_encoder(hist)
-            lr_lat = hist if use_lr_branch else None
-            N_hr = hr_mem.shape[1] if hr_mem is not None else 0
-            N_lr = (n_hist * tpf) if use_lr_branch else 0
-            seq_len_he = N_hr + N_lr + K * tpf
+            mem_tokens, mem_indices = history_encoder(hist)
+            n_mem = mem_tokens.shape[1] if mem_tokens is not None else 0
+            seq_len_he = n_mem + K * tpf
             gen_t_he = torch.arange(n_hist, n_hist + K, device=device, dtype=torch.float32)
             al_b_he = full_action_labels[:, b * K:(b + 1) * K] if full_action_labels is not None else None
-            def _vel(x_cur, s, _sl=seq_len_he, _hr=hr_mem, _mi=mem_idx, _lr=lr_lat, _gt=gen_t_he, _al=al_b_he):
+            def _vel(x_cur, s, _sl=seq_len_he, _mem=mem_tokens, _mi=mem_indices, _gt=gen_t_he, _al=al_b_he):
                 return _dit_velocity_field(generator, x_cur, s, caption_emb, _sl,
-                                             hr_mem=_hr, mem_idx=_mi, lr_lat=_lr,
-                                             gen_t=_gt, action_labels=_al)
+                                             mem_tokens=_mem, mem_indices=_mi,
+                                             target_t_indices=_gt, action_labels=_al)
         else:
             # HE-free autoregression: prepend generated clean latents as cond frames (t=0); only the current K frames denoised by σ
             prefix = torch.cat(generated_detached, dim=2).contiguous()   # [1,C,n_hist,H,W] clean (detached)
@@ -306,16 +276,16 @@ def calc_dmd_loss(real_score, fake_score, x0_gen, caption_emb, neg_caption_emb,
         # real score (frozen teacher) + CFG. cond = caption + camera; uncond = pure neg caption (action_labels=None),
         # so CFG amplifies the joint caption+camera direction (else camera cancels out on both sides).
         v_real_c = _dit_velocity_field(real_score, x_t, sigma, caption_emb, seq_len,
-                                         gen_t=full_t, action_labels=full_action_labels)
+                                         target_t_indices=full_t, action_labels=full_action_labels)
         v_real_u = _dit_velocity_field(real_score, x_t, sigma, neg_caption_emb, seq_len,
-                                         gen_t=full_t, action_labels=None)
+                                         target_t_indices=full_t, action_labels=None)
         x0_real_c = velocity_into_x0(v_real_c, x_t, sigma)
         x0_real_u = velocity_into_x0(v_real_u, x_t, sigma)
         x0_real = x0_real_c + (x0_real_c - x0_real_u) * args.real_guidance_scale
 
         # fake score (critic)
         v_fake = _dit_velocity_field(fake_score, x_t, sigma, caption_emb, seq_len,
-                                       gen_t=full_t, action_labels=full_action_labels)
+                                       target_t_indices=full_t, action_labels=full_action_labels)
         x0_fake = velocity_into_x0(v_fake, x_t, sigma)
 
         # DMD grad: (fake-real) / mean|x0_gen - real|
@@ -357,7 +327,8 @@ def calc_sft_loss(generator, gt_latent, caption_emb, full_action_labels, args, d
     ss = _warp_sigma(s, float(getattr(args, 'dmd_timestep_shift', 5.0)))
     eps = torch.randn_like(x0)
     x_t = (1.0 - ss) * x0 + ss * eps
-    v = _dit_velocity_field(generator, x_t, ss, caption_emb, seq_len, gen_t=full_t, action_labels=al)
+    v = _dit_velocity_field(generator, x_t, ss, caption_emb, seq_len,
+                            target_t_indices=full_t, action_labels=al)
     return F.mse_loss(v.float(), (eps - x0).float())            # velocity MLE (flow matching)
 
 
@@ -374,7 +345,8 @@ def calc_real_fkl_loss(generator, gt_latent, caption_emb, full_action_labels, ar
     ss = _warp_sigma(s, float(getattr(args, 'dmd_timestep_shift', 5.0)))
     eps = torch.randn_like(x0)
     x_t = (1.0 - ss) * x0 + ss * eps
-    v = _dit_velocity_field(generator, x_t, ss, caption_emb, seq_len, gen_t=full_t, action_labels=al)
+    v = _dit_velocity_field(generator, x_t, ss, caption_emb, seq_len,
+                            target_t_indices=full_t, action_labels=al)
     x0_pred = velocity_into_x0(v, x_t, ss)
     return F.mse_loss(x0_pred.float(), x0.float())
 
@@ -404,8 +376,10 @@ def calc_teacher_fkl_loss(generator, real_score, caption_emb, neg_caption_emb,
             if i in save_set:
                 saves[i] = lat.detach()
             si = ts_list[i]
-            v_c = _dit_velocity_field(real_score, lat, si, caption_emb, seq_len, gen_t=full_t, action_labels=al)
-            v_u = _dit_velocity_field(real_score, lat, si, neg_caption_emb, seq_len, gen_t=full_t, action_labels=None)
+            v_c = _dit_velocity_field(real_score, lat, si, caption_emb, seq_len,
+                                      target_t_indices=full_t, action_labels=al)
+            v_u = _dit_velocity_field(real_score, lat, si, neg_caption_emb, seq_len,
+                                      target_t_indices=full_t, action_labels=None)
             v = v_u + cfg * (v_c - v_u)
             lat = lat + (ts_list[i + 1] - si) * v
         saves[max_step] = lat.detach()
@@ -415,7 +389,8 @@ def calc_teacher_fkl_loss(generator, real_score, caption_emb, neg_caption_emb,
         x_in, x_tgt = saves[a], saves[b]
         s_in, s_tgt = ts_list[a], ts_list[b]
         teacher_x0 = (x_in.double() - s_in * (x_tgt.double() - x_in.double()) / (s_tgt - s_in)).float()
-        v_s = _dit_velocity_field(generator, x_in, s_in, caption_emb, seq_len, gen_t=full_t, action_labels=al)
+        v_s = _dit_velocity_field(generator, x_in, s_in, caption_emb, seq_len,
+                                  target_t_indices=full_t, action_labels=al)
         x0_pred = x_in.float() - s_in * v_s.float()
         e = F.mse_loss(x0_pred, teacher_x0)
         loss = e if loss is None else loss + e
@@ -437,7 +412,7 @@ def calc_critic_loss(fake_score, x0_gen, caption_emb, full_action_labels, args, 
     x_t = (1 - s5) * x0 + s5 * noise
 
     v_fake = _dit_velocity_field(fake_score, x_t, sigma, caption_emb, seq_len,
-                                   gen_t=full_t, action_labels=full_action_labels)
+                                   target_t_indices=full_t, action_labels=full_action_labels)
     target_v = (noise - x0)                              # flow matching velocity
     critic_loss = F.mse_loss(v_fake.float(), target_v.float())
     return critic_loss, {"critic_sigma": float(sigma.mean().item())}
@@ -463,113 +438,12 @@ def data_teacher_sample(real_score, caption_emb, neg_caption_emb, full_action_la
         s_cur = sig[i].item()
         s_nxt = sig[i + 1].item()
         v_c = _dit_velocity_field(real_score, x_t, s_cur, caption_emb, seq_len,
-                                    gen_t=full_t, action_labels=full_action_labels)
+                                    target_t_indices=full_t, action_labels=full_action_labels)
         if cfg > 1.0:
             v_u = _dit_velocity_field(real_score, x_t, s_cur, neg_caption_emb, seq_len,
-                                        gen_t=full_t, action_labels=None)   # uncond does not append camera
+                                        target_t_indices=full_t, action_labels=None)   # uncond does not append camera
             v = v_u + cfg * (v_c - v_u)
         else:
             v = v_c
         x_t = (x_t.float() + v.float() * (s_nxt - s_cur)).to(dtype)
     return x_t   # clean x0 (whole segment generated by the teacher)
-
-
-# NVFP4 QAT: generator fake-quant wrapper + BF16↔NVFP4 self-distillation KL
-def enclose_generator_nvfp4(generator, args):
-    """replace the generator's nn.Linear with NVFP4Linear (fake-quant), return the replacement count.
-    Must be called before the FSDP wrap. After replacement, quantization is enabled (student mode)."""
-    from pipelines.common.nvfp4 import NVFP4Config, enable_nvfp4_quantization, toggle_nvfp4_quantization
-    cfg = NVFP4Config(
-        block_size=int(getattr(args, 'nvfp4_block_size', 16)),
-        quantize_activations=bool(getattr(args, 'nvfp4_quantize_activations', False)),
-        skip_modules=tuple(getattr(args, 'nvfp4_skip_modules', ()) or ()),
-    )
-    replaced = enable_nvfp4_quantization(generator, cfg)
-    toggle_nvfp4_quantization(generator, True)   # default to student (quantized) mode during training
-    return replaced, cfg
-
-
-def _nvfp4_fwd_kl(student, teacher, temperature=1.0):
-    """softmax KL(teacher || student) with the channel dim as logits. Tensor [B,C,F,H,W]."""
-    def _to_logits(t):
-        return t.float().permute(0, 2, 3, 4, 1).reshape(-1, t.shape[1])   # [N, C]
-    s = _to_logits(student)
-    t = _to_logits(teacher)
-    return F.kl_div(
-        F.log_softmax(s / temperature, dim=-1),
-        F.softmax(t.detach() / temperature, dim=-1),
-        reduction="batchmean",
-    ) * (temperature ** 2)
-
-
-def _quant_selfdistill_divergence(generator, x0_ref, caption_emb, full_action_labels, args, device,
-                          set_enabled, flow_weight, x0_weight, temperature):
-    """generic quantization self-distillation KL between two forwards of the same generator: the quantized version
-    (student, with grad) aligns to the full-precision version (teacher, no_grad).
-      set_enabled(generator, bool): quantization toggle function (NVFP4's or FP8's).
-      x0_ref: [1,C,Fn,H,W] reference clean latent (the generator's current rollout output, detached).
-    Returns (kl_loss, flow_kl, x0_kl). Restores quantization-on (student) at the end."""
-    B, C, Fn, H, W = x0_ref.shape
-    tpf = (H // WAN_PATCH_H) * (W // WAN_PATCH_W)
-    seq_len = Fn * tpf
-    full_t = torch.arange(0, Fn, device=device, dtype=torch.float32)
-
-    # same noisy input (random sigma, consistent with DMD/critic noising)
-    sigma = _draw_dmd_sigma(args, B, device, x0_ref.dtype)
-    noise = torch.randn_like(x0_ref)
-    s5 = sigma.view(B, 1, 1, 1, 1)
-    x_t = ((1 - s5) * x0_ref.detach() + s5 * noise).to(x0_ref.dtype)
-
-    try:
-        # teacher: full precision (quantization off), no_grad
-        set_enabled(generator, False)
-        with torch.no_grad():
-            v_t = _dit_velocity_field(generator, x_t, sigma, caption_emb, seq_len,
-                                        gen_t=full_t, action_labels=full_action_labels)
-            x0_t = velocity_into_x0(v_t, x_t, sigma)
-        # student: quantized (quantization on), with grad
-        set_enabled(generator, True)
-        v_s = _dit_velocity_field(generator, x_t, sigma, caption_emb, seq_len,
-                                    gen_t=full_t, action_labels=full_action_labels)
-        x0_s = velocity_into_x0(v_s, x_t, sigma)
-    finally:
-        set_enabled(generator, True)   # restore student
-
-    flow_kl = _nvfp4_fwd_kl(v_s, v_t, temperature)
-    x0_kl = _nvfp4_fwd_kl(x0_s, x0_t, temperature)
-    kl = flow_weight * flow_kl + x0_weight * x0_kl
-    return kl, flow_kl, x0_kl
-
-
-def calc_nvfp4_kl(generator, x0_ref, caption_emb, full_action_labels, args, device):
-    """NVFP4 self-distillation KL: two forwards of the same generator, BF16(quant off) vs NVFP4(quant on)."""
-    from pipelines.common.nvfp4 import toggle_nvfp4_quantization
-    kl, flow_kl, x0_kl = _quant_selfdistill_divergence(
-        generator, x0_ref, caption_emb, full_action_labels, args, device,
-        toggle_nvfp4_quantization,
-        float(getattr(args, 'nvfp4_flow_weight', 1.0)),
-        float(getattr(args, 'nvfp4_x0_weight', 0.25)),
-        float(getattr(args, 'nvfp4_temperature', 1.0)))
-    return kl, {"nvfp4_flow_kl": float(flow_kl.detach()), "nvfp4_x0_kl": float(x0_kl.detach())}
-
-
-def enclose_generator_fp8(generator, args):
-    """replace the generator's nn.Linear with FP8Linear (fake-quant, QAT). ★ call before the FSDP wrap."""
-    from pipelines.common.fp8quant import FP8Config, enable_fp8_quantization, toggle_fp8_quantization
-    cfg = FP8Config(quantize_activations=not bool(getattr(args, 'fp8_weight_only', False)),
-                    skip_modules=tuple(getattr(args, 'fp8_skip_modules', ()) or ()))
-    replaced = enable_fp8_quantization(generator, cfg)
-    toggle_fp8_quantization(generator, True)
-    return replaced, cfg
-
-
-def calc_fp8_kl(generator, x0_ref, caption_emb, full_action_labels, args, device):
-    """FP8 self-distillation KL: two forwards of the same generator, BF16(quant off) vs FP8(quant on)."""
-    from pipelines.common.fp8quant import toggle_fp8_quantization
-    kl, flow_kl, x0_kl = _quant_selfdistill_divergence(
-        generator, x0_ref, caption_emb, full_action_labels, args, device,
-        toggle_fp8_quantization,
-        float(getattr(args, 'fp8_flow_weight', 1.0)),
-        float(getattr(args, 'fp8_x0_weight', 0.25)),
-        float(getattr(args, 'fp8_temperature', 1.0)))
-    return kl, {"fp8_flow_kl": float(flow_kl.detach()), "fp8_x0_kl": float(x0_kl.detach())}

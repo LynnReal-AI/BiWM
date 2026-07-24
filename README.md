@@ -23,12 +23,12 @@ https://github.com/user-attachments/assets/e0f8de57-bc5e-4377-9db5-1dc581eacf03
 
 ## 支持模型
 
-| Backbone | Stage 1 | Stage 2 DMD | 量化推理 |
-|---|:---:|:---:|:---:|
-| Wan2.1-1.3B | ✅ | ✅ | FP8 / NVFP4 |
-| Wan2.2-TI2V-5B | ✅ | ✅ | FP8 / NVFP4 |
-| HunyuanVideo-1.5-8B | ✅ 相机文本 / 离散动作 | ✅ | — |
-| LTX-Video 2.3-22B | ✅ | ✅ | — |
+| Backbone | Stage 1 | Stage 2 DMD |
+|---|:---:|:---:|
+| Wan2.1-1.3B | ✅ | ✅ |
+| Wan2.2-TI2V-5B | ✅ | ✅ |
+| HunyuanVideo-1.5-8B | ✅ 相机文本 / 离散动作 | ✅ |
+| LTX-Video 2.3-22B | ✅ | ✅ |
 
 ## 安装
 

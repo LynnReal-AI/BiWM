@@ -26,12 +26,12 @@ https://github.com/user-attachments/assets/e0f8de57-bc5e-4377-9db5-1dc581eacf03
 
 ## Supported backbones
 
-| Backbone | Stage 1 | Stage 2 DMD | Quantized inference |
-|---|:--:|:--:|:--:|
-| Wan2.1-1.3B | ✅ | ✅ | FP8 / NVFP4 |
-| Wan2.2-TI2V-5B | ✅ | ✅ | FP8 / NVFP4 |
-| HunyuanVideo-1.5-8B | ✅ cam-text + discrete action | ✅ | — |
-| LTX-Video 2.3-22B | ✅ | ✅ | — |
+| Backbone | Stage 1 | Stage 2 DMD |
+|---|:--:|:--:|
+| Wan2.1-1.3B | ✅ | ✅ |
+| Wan2.2-TI2V-5B | ✅ | ✅ |
+| HunyuanVideo-1.5-8B | ✅ cam-text + discrete action | ✅ |
+| LTX-Video 2.3-22B | ✅ | ✅ |
 
 ## Setup
 
@@ -136,8 +136,6 @@ python pipelines/wan/infer_stage2.py \
   --output ./outputs/dmd_infer.mp4
 ```
 
-Add `--nvfp4 --nvfp4_kernel` on Blackwell or `--fp8 --fp8_kernel` on Hopper.
-
 ## Repository layout
 
 | Path | Purpose |
@@ -145,7 +143,7 @@ Add `--nvfp4 --nvfp4_kernel` on Blackwell or `--fp8 --fp8_kernel` on Hopper.
 | `pipelines/wan/` | Wan Stage 1, DMD, inference, and compression |
 | `pipelines/hy15/` | HY15 Stage 1 and DMD |
 | `pipelines/ltx23/` | LTX23 Stage 1 and DMD |
-| `pipelines/common/` | Shared DMD, optimizer, control, and quantization code |
+| `pipelines/common/` | Shared DMD, optimizer, and control code |
 | `wan/`, `hunyuan/`, `ltx23/` | Backbone implementations |
 | `scripts/` | Public training and inference entrypoints |
 

@@ -1049,19 +1049,6 @@ def run_training(args: argparse.Namespace) -> None:
 
             step_start_time = time.time()
 
-            # Set current step on every module that tracks it (camera warmup, packforcing Mem ratio)
-            _relative_step = global_step - resumed_step
-            for _blk in transformer.modules():
-                if hasattr(_blk, '_current_train_step'):
-                    _blk._current_train_step = _relative_step
-            # after FSDP wrap the real WanModel is at _fsdp_wrapped_module
-            _root = transformer
-            if hasattr(_root, '_fsdp_wrapped_module'):
-                _root = _root._fsdp_wrapped_module
-            if hasattr(_root, 'module'):
-                _root = _root.module
-            _root._current_train_step = global_step
-
             (step_loss, gradient_norm, last_prompt, last_camera_kwargs,
              last_task_type, last_cond_end, last_cond_latent, last_gt_video_latent,
              last_source, last_caption_type, last_K_ctrl, last_c2w_ctrl,
