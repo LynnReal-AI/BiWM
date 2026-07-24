@@ -1,4 +1,4 @@
-# Copyright 2024-2025 LTX-2.3 Refactored (WAN-style)
+# Copyright 2024-2025 LTX-Video 2.3
 """LTX-Video 2.3 transformer used by the BiWM training pipelines."""
 from dataclasses import dataclass
 from enum import Enum

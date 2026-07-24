@@ -6,7 +6,7 @@ import torch.nn as nn
 from einops import rearrange
 from transformers import AutoTokenizer
 
-from .model_ltx_2_3 import (
+from .model import (
     Attention,
     FeedForward,
     LTXRopeType,

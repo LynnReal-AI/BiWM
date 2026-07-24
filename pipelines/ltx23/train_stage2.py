@@ -23,7 +23,7 @@ from pipelines.ltx23.train_stage1 import (
     # 验证视频保存工具 (与 stage1 同款, torchvision write_video crf18)
     save_video, _frames_to_uint8, LTX_VAE_SPATIAL_STRIDE, _VAL_ACTIONS,
 )
-from ltx23.modules.model_ltx_2_3 import LTX23AttentionBlock
+from ltx23.modules.model import LTX23AttentionBlock
 
 
 # =============================================================================

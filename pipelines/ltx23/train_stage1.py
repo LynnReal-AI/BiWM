@@ -14,7 +14,7 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ltx23.modules.model_ltx_2_3 import LTX23Model, LTX23AttentionBlock
+from ltx23.modules.model import LTX23Model, LTX23AttentionBlock
 from pipelines.dataset.biwm_camera_text_dataset import BiwmCamCaptionData
 
 # LTX-2.3 VAE 几何 (见 utils/ltx_wrapper.py LTXVAEWrapper):
