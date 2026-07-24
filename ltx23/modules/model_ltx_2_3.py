@@ -261,7 +261,7 @@ class Attention(torch.nn.Module):
 
 
 class LTX23SelfAttention(torch.nn.Module):
-    """Self-attention with sparse attention and context parallel support."""
+    """Self-attention with context parallel support."""
     def __init__(
         self,
         query_dim: int,
@@ -272,9 +272,6 @@ class LTX23SelfAttention(torch.nn.Module):
         rope_type: LTXRopeType = LTXRopeType.SPLIT,
         attention_function: AttentionCallable | AttentionFunction = AttentionFunction.DEFAULT,
         apply_gated_attention: bool = False,
-        enable_sparse_attention: bool = False,
-        sparse_block_size: tuple = (4, 4, 4),
-        sparse_ratio: float = 0.125,
     ) -> None:
         super().__init__()
         self.rope_type = rope_type
@@ -301,17 +298,6 @@ class LTX23SelfAttention(torch.nn.Module):
 
         self.to_out = torch.nn.Sequential(torch.nn.Linear(inner_dim, query_dim, bias=True), torch.nn.Identity())
 
-        # Sparse attention support
-        self.enable_sparse_attention = enable_sparse_attention
-        if enable_sparse_attention:
-            from ltx23.modules.sparse_attention import BlockSparseAttention
-            self.sparse_attn = BlockSparseAttention(
-                block_size=sparse_block_size,
-                sparsity_ratio=sparse_ratio,
-                num_heads=heads,
-                head_dim=dim_head,
-            )
-
     def forward(
         self,
         x: torch.Tensor,
@@ -319,7 +305,6 @@ class LTX23SelfAttention(torch.nn.Module):
         mask: torch.Tensor | None = None,
         pe: torch.Tensor | None = None,
         k_pe: torch.Tensor | None = None,
-        video_shape: tuple = None,
         perturbation_mask: torch.Tensor | None = None,
         all_perturbed: bool = False,
     ) -> torch.Tensor:
@@ -342,14 +327,7 @@ class LTX23SelfAttention(torch.nn.Module):
                 q = apply_rotary_emb(q, pe, self.rope_type)
                 k = apply_rotary_emb(k, pe if k_pe is None else k_pe, self.rope_type)
 
-            # Choose attention implementation
-            if self.enable_sparse_attention and video_shape is not None:
-                q = q.view(q.shape[0], q.shape[1], self.heads, self.dim_head)
-                k = k.view(k.shape[0], k.shape[1], self.heads, self.dim_head)
-                v_reshaped = v.view(v.shape[0], v.shape[1], self.heads, self.dim_head)
-                out = self.sparse_attn(q, k, v_reshaped, video_shape=video_shape, mask=mask)
-                out = out.reshape(q.shape[0], q.shape[1], -1)
-            elif is_self_attn and is_cp_enabled():
+            if is_self_attn and is_cp_enabled():
                 if not hasattr(self, '_ulysses_debug_cnt'):
                     self._ulysses_debug_cnt = 0
                 self._ulysses_debug_cnt += 1
@@ -421,9 +399,6 @@ class LTX23AttentionBlock(torch.nn.Module):
         rope_type: LTXRopeType = LTXRopeType.SPLIT,
         norm_eps: float = 1e-6,
         attention_function: AttentionFunction | AttentionCallable = AttentionFunction.DEFAULT,
-        enable_sparse_attention: bool = False,
-        sparse_block_size: tuple = (4, 4, 4),
-        sparse_ratio: float = 0.125,
     ):
         super().__init__()
 
@@ -439,9 +414,6 @@ class LTX23AttentionBlock(torch.nn.Module):
             norm_eps=norm_eps,
             attention_function=attention_function,
             apply_gated_attention=video.apply_gated_attention,
-            enable_sparse_attention=enable_sparse_attention,
-            sparse_block_size=sparse_block_size,
-            sparse_ratio=sparse_ratio,
         )
         self.attn2 = LTX23CrossAttention(
             query_dim=video.dim,
@@ -504,7 +476,6 @@ class LTX23AttentionBlock(torch.nn.Module):
         context: torch.Tensor | None = None,
         context_mask: torch.Tensor | None = None,
         perturbations: BatchedPerturbationConfig | None = None,
-        video_shape: tuple = None,
         prompt_timestep: Optional[torch.Tensor] = None,
         self_attention_mask: Optional[torch.Tensor] = None,
         per_frame_context: Optional[torch.Tensor] = None,
@@ -536,7 +507,6 @@ class LTX23AttentionBlock(torch.nn.Module):
             + self.attn1(
                 norm_vx,
                 pe=freqs,
-                video_shape=video_shape,
                 mask=self_attention_mask,
                 perturbation_mask=v_mask,
                 all_perturbed=all_perturbed,
@@ -655,11 +625,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
                  qk_norm=True,
                  cross_attn_norm=True,
                  eps=1e-6,
-                 # Sparse Attention params
-                 enable_sparse_attention: bool = False,
-                 sparse_block_size: tuple = (4, 4, 4),
-                 sparse_ratio_train: float = 0.125,
-                 sparse_ratio_inference: float = 0.0625,
                  ):
 
         super().__init__()
@@ -724,13 +689,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
         self.norm_out = torch.nn.LayerNorm(self.inner_dim, elementwise_affine=False, eps=norm_eps)
         self.proj_out = torch.nn.Linear(self.inner_dim, out_channels)
 
-        # Sparse attention
-        self.enable_sparse_attention = enable_sparse_attention
-        self.sparse_block_size = sparse_block_size
-        self.sparse_ratio = sparse_ratio_train
-        self.sparse_ratio_train = sparse_ratio_train
-        self.sparse_ratio_inference = sparse_ratio_inference
-
         # Transformer blocks
         video_config = (
             TransformerConfig(
@@ -753,9 +711,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
                     rope_type=self.rope_type,
                     norm_eps=norm_eps,
                     attention_function=attention_type,
-                    enable_sparse_attention=enable_sparse_attention,
-                    sparse_block_size=sparse_block_size,
-                    sparse_ratio=self.sparse_ratio,
                 )
                 for idx in range(num_layers)
             ]
@@ -771,12 +726,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
 
     def set_gradient_checkpointing(self, enable: bool) -> None:
         self.gradient_checkpointing = enable
-
-    def set_sparse_ratio(self, ratio: float):
-        self.sparse_ratio = ratio
-        for block in self.blocks:
-            if hasattr(block.attn1, 'sparse_attn'):
-                block.attn1.sparse_attn.sparsity_ratio = ratio
 
     def precompute_cam_text_embeddings(self, encode_fn, device, dtype=torch.bfloat16):
         """Pre-encode 81 action texts using text encoder and store as raw buffer.
@@ -854,8 +803,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
             x_stacked = x
 
         batch_size, channels, num_frames, height, width = x_stacked.shape
-        video_shape = (num_frames, height, width) if self.enable_sparse_attention else None
-
         # Patchify
         patchifier = VideoLatentPatchifier(patch_size=1)
         target_shape = VideoLatentShape(
@@ -1058,13 +1005,8 @@ class LTX23Model(ModelMixin, ConfigMixin):
             if prompt_timestep is not None:
                 prompt_timestep = scatter_sequence(prompt_timestep, dim=1)
             freqs = (scatter_sequence(freqs[0], dim=2), scatter_sequence(freqs[1], dim=2))
-            if video_shape is not None:
-                T_vs, H_vs, W_vs = video_shape
-                padded_seq = hidden.shape[1] * cp_size
-                T_padded = padded_seq // (H_vs * W_vs)
-                video_shape = (T_padded // cp_size, H_vs, W_vs)
             if _cp_debug:
-                print(f"[CP-Debug][rank={_rank}] CP scatter 全部完成, hidden={hidden.shape}, video_shape={video_shape}", flush=True)
+                print(f"[CP-Debug][rank={_rank}] CP scatter 全部完成, hidden={hidden.shape}", flush=True)
 
         # Transformer blocks
         def create_custom_forward(module):
@@ -1081,7 +1023,6 @@ class LTX23Model(ModelMixin, ConfigMixin):
                 "context": context_proj,
                 "context_mask": None,
                 "perturbations": perturbations,
-                "video_shape": video_shape,
                 "prompt_timestep": prompt_timestep,
                 "self_attention_mask": None,
                 "per_frame_context": per_frame_context,
