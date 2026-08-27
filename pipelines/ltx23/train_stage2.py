@@ -190,7 +190,7 @@ def compute_dmd_loss(real_score, fake_score, x0_gen, caption_emb, neg_caption_em
                                 action_labels=None, fps=fps)
         x0_real_c = velocity_to_x0(v_real_c, x_t, sigma)
         x0_real_u = velocity_to_x0(v_real_u, x_t, sigma)
-        x0_real = x0_real_c + (x0_real_c - x0_real_u) * args.real_guidance_scale
+        x0_real = x0_real_u + (x0_real_c - x0_real_u) * args.real_guidance_scale
 
         # fake score (独立 critic)
         v_fake = ltx_velocity(fake_score, x_t, sigma, caption_emb,
