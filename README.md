@@ -1,6 +1,6 @@
 # 🎮 BiWM: Bidirectional Autoregressive Video World Models
 
-[中文](README.md)
+[中文](README_CN.md)
 
 > **The first open-source training framework for bidirectional autoregressive video world models.**
 
