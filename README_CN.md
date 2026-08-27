@@ -1,6 +1,6 @@
 # 🎮 BiWM：双向自回归视频世界模型
 
-[English](README_EN.md)
+[English](README.md)
 
 > **首个开源双向自回归视频世界模型训练框架。**
 
