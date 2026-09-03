@@ -6,6 +6,8 @@ import torch
 import torch.nn.functional as F
 import torch.distributed as dist
 
+from pipelines.common.dmd_algo import run_cfg
+
 WAN_PATCH_H, WAN_PATCH_W = 2, 2
 
 
@@ -281,7 +283,10 @@ def calc_dmd_loss(real_score, fake_score, x0_gen, caption_emb, neg_caption_emb,
                                          target_t_indices=full_t, action_labels=None)
         x0_real_c = velocity_into_x0(v_real_c, x_t, sigma)
         x0_real_u = velocity_into_x0(v_real_u, x_t, sigma)
-        x0_real = x0_real_c + (x0_real_c - x0_real_u) * args.real_guidance_scale
+        # Classifier-free guidance is anchored at the unconditional prediction.
+        # Keeping the anchor at ``x0_real_c`` adds one extra conditional term and
+        # shifts the teacher target even when the guidance scale is zero.
+        x0_real = run_cfg(x0_real_c, x0_real_u, args.real_guidance_scale)
 
         # fake score (critic)
         v_fake = _dit_velocity_field(fake_score, x_t, sigma, caption_emb, seq_len,
