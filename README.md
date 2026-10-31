@@ -152,7 +152,7 @@ python pipelines/wan/infer_stage2.py \
 ```bibtex
 @article{rui2026biwm,
   title={BiWM: Advancing Open-Source Interactive Video World Models with Bidirectional Autoregression},
-  author={Rui, Shaohao and Mao, Xiaofeng and Zhang, Zhanyu and Lin, Peijia and Zhu, Yansong and Zhang, Yibo and Wan, Haibin and Ma, Weijie},
+  author={Rui, Shaohao and Mao, Xiaofeng and Zhang, Zhanyu and Lin, Peijia and Zhu, Yansong and Zhang, Yibo and Wan, Haibin and Zhao, Zhangrui and Ma, Weijie},
   journal={arXiv preprint arXiv:2606.10135},
   year={2026}
 }
