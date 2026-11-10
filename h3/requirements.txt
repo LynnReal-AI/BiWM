@@ -1,0 +1,9 @@
+# Use a separate H3 environment; Wan's older Diffusers cannot load H3.
+torch==2.9.1
+diffusers==0.40.0
+transformers==5.12.1
+peft==0.20.0
+accelerate>=1.13.0
+safetensors
+numpy
+# Install the Hopper CUDA build of flash-attn-3==3.0.0 separately.

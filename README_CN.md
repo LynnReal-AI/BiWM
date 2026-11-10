@@ -23,12 +23,18 @@ https://github.com/user-attachments/assets/e0f8de57-bc5e-4377-9db5-1dc581eacf03
 
 ## 支持模型
 
+**2026-11-10：新增 MiniMax-H3 架构适配。** 本次先发布仅保留 ProPE 相机注入的
+第一阶段 flow-matching 训练代码，支持 LoRA / 全参微调，不包含手势条件和辅助损失。
+H3 按三阶段推进：相机训练 → FramePack v2v LoRA 适配 → 双向自回归 DMD；
+后两阶段在训练验证后发布。环境、数据和运行方式见 [H3 使用说明](h3/README.md)。
+
 | Backbone | Stage 1 | Stage 2 DMD |
 |---|:---:|:---:|
 | Wan2.1-1.3B | ✅ | ✅ |
 | Wan2.2-TI2V-5B | ✅ | ✅ |
 | HunyuanVideo-1.5-8B | ✅ 相机文本 / 离散动作 | ✅ |
 | LTX-Video 2.3-22B | ✅ | ✅ |
+| MiniMax-H3-33B | ✅ ProPE 相机训练代码 | 待 H3 FramePack 适配后发布 |
 
 ## 安装
 

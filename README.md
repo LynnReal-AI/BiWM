@@ -26,12 +26,19 @@ https://github.com/user-attachments/assets/e0f8de57-bc5e-4377-9db5-1dc581eacf03
 
 ## Supported backbones
 
+**2026-11-10: MiniMax-H3 support added.** The first H3 release provides camera-only
+ProPE flow-matching training with LoRA/full fine-tuning. H3 uses a three-stage
+roadmap: camera training → FramePack v2v LoRA adaptation → bidirectional AR DMD.
+Only camera Stage 1 is included in this release; the later stages will follow
+after training and validation. See the [H3 guide](h3/README.md).
+
 | Backbone | Stage 1 | Stage 2 DMD |
 |---|:--:|:--:|
 | Wan2.1-1.3B | ✅ | ✅ |
 | Wan2.2-TI2V-5B | ✅ | ✅ |
 | HunyuanVideo-1.5-8B | ✅ cam-text + discrete action | ✅ |
 | LTX-Video 2.3-22B | ✅ | ✅ |
+| MiniMax-H3-33B | ✅ ProPE camera code | Planned after H3 FramePack adaptation |
 
 ## Setup
 
@@ -122,6 +129,18 @@ STAGE1_DIR=./logs/ltx23/stage1 bash scripts/ltx23/stage2_dmd.sh
 Common overrides: `BIWM_VIDEO_DIR`, `BIWM_CAPTION_JSON`, `OUTPUT_DIR`,
 `PYTHON_BIN`, `MAX_TRAIN_STEPS`, and `CHECKPOINTING_STEPS`.
 
+### MiniMax-H3
+
+Use the separate [H3 environment and preencoded camera data](h3/README.md):
+
+```bash
+H3_MODEL_PATH=/path/to/H3 H3_MANIFEST=/path/to/manifest.jsonl \
+OUTPUT_DIR=/path/to/new/run NPROC_PER_NODE=8 bash scripts/h3/stage1.sh
+```
+
+The H3 path keeps ProPE camera injection and a single flow-matching MSE loss.
+It has no gesture/HAND conditioning or auxiliary perceptual losses.
+
 ## Inference
 
 Wan distilled-model inference:
@@ -143,6 +162,7 @@ python pipelines/wan/infer_stage2.py \
 | `pipelines/wan/` | Wan Stage 1, DMD, inference, and compression |
 | `pipelines/hy15/` | HY15 Stage 1 and DMD |
 | `pipelines/ltx23/` | LTX23 Stage 1 and DMD |
+| `h3/`, `pipelines/h3/` | H3 camera-only Stage 1 components and training |
 | `pipelines/common/` | Shared DMD, optimizer, and control code |
 | `wan/`, `hunyuan/`, `ltx23/` | Backbone implementations |
 | `scripts/` | Public training and inference entrypoints |

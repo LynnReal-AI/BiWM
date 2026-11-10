@@ -1,0 +1,60 @@
+{
+  "date": "2026-11-10",
+  "source_run": "stage0.5_v7",
+  "biwm_base_commit": "b032ad50d68c75f0cbc314e1e4ceea598d3c791d",
+  "weights_included": false,
+  "files": [
+    {
+      "destination": "h3/torch_prope.py",
+      "source": "hand_control_world/solarwm_h3_repro/outputs_official_v2/stage0.5_v7/frozen/hand_control_world/solarwm_h3_repro/scripts/official_stage0p5_v34/torch_prope.py",
+      "sha256": "31d65e56eaa1f93ae9b07f01b6af6b2766362afac76024a581511a4fdc7d7d90"
+    },
+    {
+      "destination": "h3/optimizer.py",
+      "source": "hand_control_world/solarwm_h3_repro/outputs_official_v2/stage0.5_v7/frozen/hand_control_world/reference_code/SolarWM/src/solarwm/backends/minimax_h3/optimizer.py",
+      "sha256": "906f52d591ae7638ff1eb382c9bf6c70d83f42efe1b559821a401926acb3691e"
+    },
+    {
+      "destination": "h3/diffusers_compat.py",
+      "source": "hand_control_world/solarwm_h3_repro/outputs_official_v2/stage0.5_v7/frozen/hand_control_world/reference_code/SolarWM/src/solarwm/backends/minimax_h3/diffusers_compat.py",
+      "sha256": "cfb59b95965e110efdf0956431c63cde3147f2ccb4324d8489cd49ee08e80707"
+    },
+    {
+      "destination": "h3/h3_fa3_policy.py",
+      "source": "hand_control_world/H3/h3_fa3_policy.py",
+      "sha256": "a31f2579a6fef6a9ee8f6f15a62228f52573b90969118ebce9ac25afc0ffd5b7"
+    },
+    {
+      "source": "hand_control_world/solarwm_h3_repro/outputs_official_v2/stage0.5_v7/frozen/hand_control_world/solarwm_h3_repro/scripts/official_stage0p5_v34/model.py",
+      "sha256": "6e853dedd202b4139733cfd60da634d2ebe4272e7eafbf3998bed3061661ffab",
+      "usage": "camera-only adaptation, not an exact v7 reproduction"
+    },
+    {
+      "source": "hand_control_world/solarwm_h3_repro/outputs_official_v2/stage0.5_v7/frozen/hand_control_world/solarwm_h3_repro/scripts/official_stage0p5_v34/layout.py",
+      "sha256": "4674719c38f45daca02a5938f7fe235f0a924ca102dc7f085d8bb90c1310d43d",
+      "usage": "camera-only adaptation, not an exact v7 reproduction"
+    },
+    {
+      "source": "hand_control_world/solarwm_h3_repro/outputs_official_v2/stage0.5_v7/frozen/hand_control_world/solarwm_h3_repro/scripts/official_stage0p5_v34/core.py",
+      "sha256": "a3d333b7e5728525830ae5180cae858fb3c871b4db02710a49c02b10251640fb",
+      "usage": "camera-only adaptation, not an exact v7 reproduction"
+    }
+  ],
+  "validation": {
+    "date": "2026-11-10",
+    "cpu_unit_tests": 11,
+    "two_rank_cpu_fsdp_resume": "passed; model, optimizer, RNG and next update",
+    "lora_export_merge": "312 targets, 624 adapter tensors, meta materialization and FP32 merge passed on reduced H3",
+    "h200_training": "not run",
+    "framepack_v2v": "not released",
+    "dmd": "not released"
+  },
+  "runtime_versions": {
+    "torch": "2.9.1+cu128",
+    "diffusers": "0.40.0",
+    "transformers": "5.12.1",
+    "peft": "0.20.0",
+    "flash-attn-3": "3.0.0 (installed, GPU execution not tested)"
+  },
+  "native_diffusers_transformer_sha256": "1926b1bc15a5bebda05e3dc8cde1b3955d56641ba7f8f9d6e90c8f78c66ae30c"
+}
