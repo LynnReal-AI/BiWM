@@ -60,7 +60,8 @@ def rollout(model, sample, seed, latent_frames=12, points=30):
     return result.cpu()
 
 
-def deliver(base, output, sample, before, after, case_id, device, *, rank, step=10, baseline_step=0):
+def deliver(base, output, sample, before, after, case_id, device, *, rank, step=10, baseline_step=0,
+            model_label='FramePack', baseline_label=None):
     from diffusers import AutoencoderKLMiniMaxH3
     from PIL import Image,ImageDraw
     import subprocess
@@ -97,10 +98,12 @@ def deliver(base, output, sample, before, after, case_id, device, *, rank, step=
         probe=json.loads(subprocess.check_output(['ffprobe','-v','error','-count_frames','-select_streams','v:0','-show_entries','stream=nb_read_frames','-of','json',str(path)]))
         if int(probe['streams'][0]['nb_read_frames'])!=len(frames):raise RuntimeError('Delivered video frame count differs')
         subprocess.run(['ffmpeg','-v','error','-i',str(path),'-f','null','-'],check=True)
-    encode('baseline.mp4',[b],[f'Baseline Live step{baseline_step} seed{42+case_id}'])
-    encode(f'step{step}.mp4',[a],[f'FramePack Live step{step} seed{42+case_id}'])
-    encode(f'GT_step{step}.mp4',[gt,a],['GT VAE reconstruction',f'Live step{step} seed{42+case_id}'])
-    encode(f'GT_baseline_step{step}.mp4',[gt,b,a],['GT VAE reconstruction',f'Baseline Live step{baseline_step}',f'Live step{step} seed{42+case_id}'])
+    before_label=baseline_label or f'Baseline Live step{baseline_step} seed{42+case_id}'
+    after_label=f'{model_label} Live step{step} seed{42+case_id}'
+    encode('baseline.mp4',[b],[before_label])
+    encode(f'step{step}.mp4',[a],[after_label])
+    encode(f'GT_step{step}.mp4',[gt,a],['GT VAE reconstruction',after_label])
+    encode(f'GT_baseline_step{step}.mp4',[gt,b,a],['GT VAE reconstruction',before_label,after_label])
     (directory/'COMPLETE.json').write_text(json.dumps(dict(rank=rank,case_id=case_id,frames=frames,seed=42+case_id,model_step=step,baseline_step=baseline_step,GT='VAE reconstruction; original RGB not locally extracted',full_decode=True,scope='native autoregressive rollout; quality review is separate'),indent=2)+'\n')
 
 
