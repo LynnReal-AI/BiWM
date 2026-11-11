@@ -1,16 +1,28 @@
 # H3 Stage 3: bidirectional autoregressive DMD
 
 This is the camera-only H3 adaptation of the BiWM Wan2.2-TI2V-5B self-forcing
-DMD route. On 2026-11-11 the native eight-H200 pilot completed
-2 generator and 15 critic updates, including five critic warmup updates. Both
-G1/C10 and G2/C15 checkpoints contain all eight rank payloads (561,936,242,960
-bytes each). Each G step delivers eight native 158-frame cases and 32 MP4s; all
-64 videos passed independent frame/geometry/full-decode/SHA checks. A separate
-eight-GPU restore reproduced both models, both FP32 Adam states, all RNG streams
-and data cursors bitwise without new optimizer updates. Sampled review still
-shows severe late blur and viewpoint/layout drift;
-this is a functional pilot, not a converged model-quality release.
+DMD route. On 2026-11-11 the native eight-H200 run restored the G2/C15 pilot and
+completed **18 new G / 90 new C updates to G20/C105**, without extra warmup.
+G3/C20 and G20/C105 contain all eight rank payloads (561,936,242,960 bytes each).
+G3/G10/G20 each deliver eight native 158-frame cases and 32 MP4s; all 96 videos
+passed independent frame/geometry/full-decode/SHA checks. G10 retains validation
+latents but no full checkpoint. A separate eight-GPU G20 restore reproduced both
+models, both FP32 Adam states, all RNG streams and data cursors bitwise, with
+zero optimizer updates. Sampled review shows a substantial sharpness improvement
+over G0/G2, with remaining subject, viewpoint and layout errors. The native
+teacher also loses the late subject in one game case. This is bounded training
+validation, not a converged model-quality release.
 Source extraction and validation scope are recorded in [DMD_SOURCE.json](DMD_SOURCE.json).
+
+The public training snapshot `20c7849` completed the updates, checkpoints and
+all validation tensors, then its media call failed because the shared renderer
+did not accept the teacher/DMD label arguments. Commit `b5c86a3` fixes that API
+and checks the real FM, teacher and DMD call signatures. An independent native
+VAE-only process using this fix decoded all saved G3/G10/G20 tensors, adding
+zero G/C updates. The original failed exit receipt is preserved separately from
+the successful decode and media audits. The training source and G20 checkpoint
+were unchanged. Native VAE decoding uses FP32 weights, FP16 autocast and its
+explicit instance-local SDPA path; DiT training retains `_flash_3`.
 
 The generator keeps the selected Stage 2 LoRA384 and FramePack compressor on the
 original SolarWM camera-merged base. Export folds that Stage 2 adapter into two
@@ -76,8 +88,10 @@ the original 2G/15C run used the frozen experimental entrypoint. The public
 entrypoint subsequently continued the complete G2/C15 state through another
 native eight-H200 1G/5C cycle to G3/C20, without optimizer/RNG/data resets or
 additional critic warmup. G3 used 183.24 seconds with 106.47 GiB peak allocated
-memory. Its larger bounded continuation remains in progress; these functional
-gates do not establish converged video quality.
+memory. That continuation then reached G20/C105, with 864 all-rank receipts
+covering exactly G3..20 and C16..105. Data order, cursors, synchronized exits,
+score sigmas and finite losses/gradients were audited. Neither these integrity
+gates nor a scalar loss establish converged video quality.
 
 ## Select and export Stage 2 Live
 
@@ -222,5 +236,5 @@ stream and data cursors against the saved rank payloads. Device relocation is
 allowed; shapes, shard identity, dtypes and values must match. It needs the same
 large-model CPU RAM/GPU/storage capacity as a real restore. Its comparator and
 entrypoint continuation have tiny CPU coverage. The native eight-GPU restore
-gate passed for the G2/C15 pilot checkpoint; this does not execute a next GPU
+gate passed for the G2/C15 pilot and final G20/C105 checkpoints; this does not execute a next GPU
 optimizer step or establish next-cycle bitwise equivalence on production GPUs.

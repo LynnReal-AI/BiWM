@@ -7,12 +7,13 @@ the official SolarWM camera LoRA, then trains a fresh LoRA and history compresso
 The 8×H200 phase2 run completed 1000 additional updates and eight native 158-frame
 validation cases. Geometry/viewpoint drift remains. [Autoregressive DMD is Stage 3](DMD.md);
 its implementation includes native teacher preflight and full-critic training.
-The native 8×H200 pilot completed 2G/15C, two complete checkpoints and two rounds
-of eight native 158-frame cases. Native G/C shards, both FP32 Adam states, all
-RNG and data cursors restored bitwise on all eight GPUs. Severe late blur and
-viewpoint/layout errors remain; this validates functionality, not convergence.
-The public entrypoint also completed another native eight-H200 1G/5C cycle after
-restoring G2/C15, preserving both optimizers, RNG streams and data cursors.
+The native 8×H200 continuation restored the G2/C15 pilot and completed 18 new G
+and 90 new C updates to G20/C105, without extra warmup. G3/G10/G20 produced 96
+independently checked native 158-frame MP4s. Native G20 G/C shards, both FP32 Adam
+states, all RNG and data cursors restored bitwise on all eight GPUs. Sampled
+late-frame sharpness improved over G2; subject, viewpoint and layout errors
+remain. This is bounded training validation, not a convergence claim. The
+[DMD guide](DMD.md) records the renderer API fix and decode-only media recovery.
 
 The H3 roadmap has three stages:
 
@@ -181,4 +182,4 @@ phase2 training in that GPU path; it does not
 validate the full-target Stage 1 trainer or establish quality convergence.
 See [FRAMEPACK.md](FRAMEPACK.md) for the separate Stage 2 implementation and its
 validation status. [DMD.md](DMD.md) documents the separate Stage 3 implementation,
-its bounded pilot and pending actual GPU validation.
+its bounded native GPU training, media and full-state restore validation.

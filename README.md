@@ -35,11 +35,13 @@ and eight native 158-frame validation cases. Geometry/viewpoint drift remains;
 this is functional training validation, not convergence. The separate
 [H3 Stage 3 DMD implementation](h3/DMD.md) includes native teacher preflight,
 full-critic self-forcing training and complete-state checkpoints. The native
-8×H200 pilot completed 2G/15C, two complete checkpoints, eight 158-frame cases at
-each G step, and bitwise GPU state restore. Late blur and camera/layout drift
-remain; this is functional validation, not converged model quality. The public
-entrypoint also passed a full-state native GPU continuation through another
-1G/5C cycle. See the [H3 guide](h3/README.md).
+8×H200 run continued the complete G2/C15 pilot state through 18 new G and 90 new C
+updates to G20/C105, without extra warmup. G3/G10/G20 each produced eight native
+158-frame cases: all 96 MP4s passed independent integrity checks. G20 models,
+both FP32 Adams, RNG and cursors restored bitwise on all eight GPUs. Late sharpness
+improved over G2, while subject, viewpoint and layout errors remain; this is not
+a converged model-quality release. See the [H3 guide](h3/README.md) and
+[validation scope](h3/DMD.md), including the decode-only renderer repair.
 
 | Backbone | Stage 1 | Stage 2 DMD |
 |---|:--:|:--:|
@@ -47,7 +49,7 @@ entrypoint also passed a full-state native GPU continuation through another
 | Wan2.2-TI2V-5B | ✅ | ✅ |
 | HunyuanVideo-1.5-8B | ✅ cam-text + discrete action | ✅ |
 | LTX-Video 2.3-22B | ✅ | ✅ |
-| MiniMax-H3-33B | ✅ ProPE camera FM; FramePack v2v | Experimental H3 Stage 3: 2G/15C + native restore verified |
+| MiniMax-H3-33B | ✅ ProPE camera FM; FramePack v2v | Experimental H3 Stage 3: G20/C105, native media and full-state restore verified |
 
 ## Setup
 

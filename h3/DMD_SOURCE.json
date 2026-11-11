@@ -1,6 +1,6 @@
 {
-  "at": 1794402389.8062658,
-  "status": "Native8H200 functional2G15C pilot complete with2checkpoints/64nativeMP4s and8rankbitwise restore. Publicentrypoint subsequentlycontinued G2C15 through G3C20 actual1G5C. Fullv10budget inprogress; lateblur/layout drift remain.",
+  "at": 1794416004.718335,
+  "status": "Native8H200 public continuation completed new18G90C to G20C105, fullG3/G20 checkpoints,96nativeMP4s and all8rank G20 bitwiseGPUrestore. Renderer label API repaired via decode-only recovery; quality not converged.",
   "source_experiment": "biwm_h3_v9",
   "source_base_commit": "883ab0ba1565716603b1cef5e60cb1639d2fff24",
   "files": [
@@ -81,7 +81,7 @@
   "actual_DMD_generator_updates_verified": true,
   "public_GPU_execution": true,
   "public_CPU_4rank_native9_runtime_parity": true,
-  "public_CPU_gate_scope": "Tiny2x2 CPU/FSDP/rank4LoRA port gate; actual33B/GPU behavior belongs only to frozen experimental source until separately executed",
+  "public_CPU_gate_scope": "Tiny2x2 CPU/FSDP/rank4LoRA port parity only; independent native public training/media/restore evidence below establishes actual33B8H200 execution.",
   "public_entrypoints_and_docs": [
     {
       "path": "pipelines/h3/configure_stage3.py",
@@ -105,7 +105,7 @@
     },
     {
       "path": "h3/DMD.md",
-      "sha256": "21fa166c86b64bc65cdacba23d3788d0a87c25a9fc43313d06f5f12266797d03"
+      "sha256": "0430041d67a4630cd12b5128ecb8c361f4e97195ea6f98ee99ed977328c08283"
     },
     {
       "path": "tests/test_h3_dmd_config.py",
@@ -240,8 +240,97 @@
     },
     "source_checkpoint_complete_sha256": "f67666b6b9e93c486c757bb2a1e9295b5d88bb2e14645c13d5fa15e8ce7aa6b8",
     "executed_config_sha256": "3ab253f5ec8709a08b6ef408b5abed343a22eb73b8abea23624caa6ca0660ed4",
-    "scope": "Actualpublic entrypoint nativeGPU restored-state continuation full1G5C cycle; newcheckpoint/media/final18G90C budget andquality separate",
+    "scope": "Historical first public G3C20 cycle, followed by the complete bounded continuation recorded below.",
     "gate_sha256": "33e0d6febfa71c5ab03b4f679edea641a73dac946082749369481cd9279b1827",
-    "larger_run_budget_complete": false
+    "larger_run_budget_complete": true
+  },
+  "latest_validation_experiment": "biwm_h3_v10",
+  "public_native_bounded_continuation": {
+    "public_training_commit": "20c784998a53399181879d6b7bfb95ad38854f19",
+    "world_size": 8,
+    "DP": 8,
+    "SP": 1,
+    "effective_batch": 8,
+    "inherited": {
+      "G": 2,
+      "C": 15
+    },
+    "actual_new": {
+      "G": 18,
+      "C": 90,
+      "G_samples": 144,
+      "C_samples": 720
+    },
+    "cumulative": {
+      "G": 20,
+      "C": 105
+    },
+    "no_new_warmup": true,
+    "rank_receipts": 864,
+    "full_native33B_critic": true,
+    "latent_frames": 47,
+    "chunks": 9,
+    "RGB_frames": 158,
+    "resolution": [
+      768,
+      1344
+    ],
+    "checkpoints": [
+      {
+        "G": 3,
+        "C": 20
+      },
+      {
+        "G": 20,
+        "C": 105
+      }
+    ],
+    "checkpoint_bytes_each": 561936242960,
+    "validation_steps": [
+      3,
+      10,
+      20
+    ],
+    "native_MP4s": 96,
+    "cases_per_validation": 8,
+    "quality_converged": false,
+    "update_budget_gate_sha256": "d18e5010a1db4e08fa737402575a07929d92950ff2b0d8636a67fadd733d0113",
+    "checkpoint_gate_sha256": "e0410f0068375b44f41dc733a582e17acba83fc5ca8bbf7c9ffb4d76177620e7",
+    "quality_review_sha256": "ab3c03cc6ae3d3b22c1c26c3fca36d881ed61a9306f7892f322a910309d8b6a2",
+    "media_verification_sha256": [
+      "ac7cd2a62f4e5f5a1b79a961529c13cc657a7ce6e37c86c4f0565c8787e67122",
+      "2281ddf7aece472f84d21042c21b5e516839adae392c075ac69cbfd7c36a6f2b",
+      "abb6c116a1876ca62d964719e8c5f42878da45262e0d1306fcba374a7c6f6ee5"
+    ],
+    "scope": "Actual public fullnative bounded optimizer updates plus complete state/media; quality and any further training remain separate decisions."
+  },
+  "native_GPU_final_restore_gate": {
+    "all8rank_passed": true,
+    "source_counters": {
+      "G": 20,
+      "C": 105
+    },
+    "new_G": 0,
+    "new_C": 0,
+    "source_checkpoint_complete_sha256": "341534594b1165d4492571bc1e3ab0d7c4ab56ad0ec463b3cc943890920f71b0",
+    "gate_sha256": "7ee029a392cfc604563ba32d80bd15cecb4abf480c81679d59e75a113418dd9a",
+    "complete_sha256": "aad5c36c54571acf09aab35751dbcce1ca74abccc95e4a59b19a699fe28cd104",
+    "scope": "Native G/C shards, bothFP32Adams, allRNG anddata cursors bitwise; no next optimizer step."
+  },
+  "native_media_delivery_recovery": {
+    "original_training_exit_code": 1,
+    "original_error": "deliver() got an unexpected keyword argument 'model_label'",
+    "failed_after_completed_updates_checkpoints_and_latents": true,
+    "fix_commit": "b5c86a31ab1e8ca929d7bcfebcf526ce24fe99d4",
+    "renderer_path": "pipelines/h3/train_stage2.py",
+    "renderer_sha256": "f62b2d5cd8a8f89e6d4c3157a62208292c7c88cb504405d8c6768ccc8ed86041",
+    "regression": "tests/test_h3_media_contract.py",
+    "regression_sha256": "868f68bf8b5bc0f0c1965ee4e4657b1d5f21bb8047f6e87cb4962a32df14cf32",
+    "new_G": 0,
+    "new_C": 0,
+    "native_MP4s": 96,
+    "original_exit_receipt_preserved": true,
+    "recovery_gate_sha256": "7a9dc57011a9850823d5888a7c05eb6321a832d81c96a1bd2457b7f51657c8d1",
+    "scope": "Only media API labels and native VAE/MP4 recovery; no training arithmetic/source/checkpoint changes."
   }
 }
