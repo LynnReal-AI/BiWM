@@ -34,15 +34,16 @@ def verify_checkpoint_files(checkpoint, world):
     return complete
 
 
-def verify_finished_validation(source, config, step, world):
+def verify_finished_validation(source, config, step, world, *, validation_root=None):
     source = Path(source)
+    validation_root = source if validation_root is None else Path(validation_root)
     for rank in range(world):
         receipt = json.loads((source / 'step_receipts' / f'COMPLETE.step{step:06d}.rank{rank:03d}.json').read_text())
         if receipt['step'] != step or receipt['rank'] != rank or receipt['world_size'] != world:
             raise ValueError('Source step is not complete on all ranks')
     cases = config['validation'].get('indices', list(range(config['validation']['cases'])))
     for case in cases:
-        directory = source / 'validation' / f'case{case:03d}'
+        directory = validation_root / 'validation' / f'case{case:03d}'
         complete = json.loads((directory / 'COMPLETE.json').read_text())
         if not complete.get('full_decode') or complete['case_id'] != case:
             raise ValueError('Source validation case is incomplete')

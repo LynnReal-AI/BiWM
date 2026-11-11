@@ -28,7 +28,8 @@ https://github.com/user-attachments/assets/e0f8de57-bc5e-4377-9db5-1dc581eacf03
 H3 按三阶段推进：相机训练 → FramePack v2v LoRA 适配 → 双向自回归 DMD。
 **2026-11-11：新增 H3 第二阶段 [FramePack v2v 实现及配置](h3/FRAMEPACK.md)。**
 已在 8×H200 上完成新增 1000 次更新、完整 Live1010 检查点及 8 个原生 158 帧验证案例。
-后段几何和视角偏移仍存在；当前验证训练功能，不宣称画质收敛。H3 第三阶段 DMD 在实际训练验证后发布。
+后段几何和视角偏移仍存在；当前验证训练功能，不宣称画质收敛。
+[H3 第三阶段 DMD 实现](h3/DMD.md)已整理，包含原生 teacher 预检、完整 critic 的自回归蒸馏和完整状态保存；原生8×H200试训已完成2G/15C、两份完整检查点、每轮8个158帧验证案例及GPU状态逐位一致恢复。后段模糊与相机/布局偏移仍明显，当前通过功能验证，尚未画质收敛。
 环境、数据和运行方式见 [H3 使用说明](h3/README.md)。
 
 | Backbone | Stage 1 | Stage 2 DMD |
@@ -37,7 +38,7 @@ H3 按三阶段推进：相机训练 → FramePack v2v LoRA 适配 → 双向自
 | Wan2.2-TI2V-5B | ✅ | ✅ |
 | HunyuanVideo-1.5-8B | ✅ 相机文本 / 离散动作 | ✅ |
 | LTX-Video 2.3-22B | ✅ | ✅ |
-| MiniMax-H3-33B | ✅ ProPE 相机 FM；FramePack v2v | 计划为 H3 第三阶段 |
+| MiniMax-H3-33B | ✅ ProPE 相机 FM；FramePack v2v | H3 第三阶段实验性支持；2G/15C及原生恢复验证通过 |
 
 ## 安装
 

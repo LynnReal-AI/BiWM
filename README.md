@@ -32,8 +32,12 @@ roadmap: camera training → FramePack v2v LoRA adaptation → bidirectional AR 
 **2026-11-11: H3 Stage 2 FramePack v2v added.** The [implementation and configurations](h3/FRAMEPACK.md)
 completed 1000 additional updates on 8×H200, with complete Live1010 checkpoints
 and eight native 158-frame validation cases. Geometry/viewpoint drift remains;
-this is functional training validation, not convergence. H3 Stage 3 DMD will
-follow after actual training and validation. See the [H3 guide](h3/README.md).
+this is functional training validation, not convergence. The separate
+[H3 Stage 3 DMD implementation](h3/DMD.md) includes native teacher preflight,
+full-critic self-forcing training and complete-state checkpoints. The native
+8×H200 pilot completed 2G/15C, two complete checkpoints, eight 158-frame cases at
+each G step, and bitwise GPU state restore. Late blur and camera/layout drift
+remain; this is functional validation, not converged model quality. See the [H3 guide](h3/README.md).
 
 | Backbone | Stage 1 | Stage 2 DMD |
 |---|:--:|:--:|
@@ -41,7 +45,7 @@ follow after actual training and validation. See the [H3 guide](h3/README.md).
 | Wan2.2-TI2V-5B | ✅ | ✅ |
 | HunyuanVideo-1.5-8B | ✅ cam-text + discrete action | ✅ |
 | LTX-Video 2.3-22B | ✅ | ✅ |
-| MiniMax-H3-33B | ✅ ProPE camera FM; FramePack v2v | Planned as H3 Stage 3 |
+| MiniMax-H3-33B | ✅ ProPE camera FM; FramePack v2v | Experimental H3 Stage 3: 2G/15C + native restore verified |
 
 ## Setup
 
@@ -167,7 +171,7 @@ python pipelines/wan/infer_stage2.py \
 | `pipelines/wan/` | Wan Stage 1, DMD, inference, and compression |
 | `pipelines/hy15/` | HY15 Stage 1 and DMD |
 | `pipelines/ltx23/` | LTX23 Stage 1 and DMD |
-| `h3/`, `pipelines/h3/` | H3 camera FM, SolarWM merge/data preparation, and FramePack v2v |
+| `h3/`, `pipelines/h3/` | H3 camera FM, SolarWM merge/data preparation, FramePack v2v, and autoregressive DMD |
 | `pipelines/common/` | Shared DMD, optimizer, and control code |
 | `wan/`, `hunyuan/`, `ltx23/` | Backbone implementations |
 | `scripts/` | Public training and inference entrypoints |

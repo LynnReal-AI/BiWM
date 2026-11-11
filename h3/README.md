@@ -5,16 +5,20 @@ the `stage0.5_v7` source, with native bidirectional flow matching and ProPE came
 injection. [Stage 2 FramePack v2v](FRAMEPACK.md) merges
 the official SolarWM camera LoRA, then trains a fresh LoRA and history compressor.
 The 8×H200 phase2 run completed 1000 additional updates and eight native 158-frame
-validation cases. Geometry/viewpoint drift remains. Autoregressive DMD is Stage 3
-and will be published after actual GPU training and validation.
+validation cases. Geometry/viewpoint drift remains. [Autoregressive DMD is Stage 3](DMD.md);
+its implementation includes native teacher preflight and full-critic training.
+The native 8×H200 pilot completed 2G/15C, two complete checkpoints and two rounds
+of eight native 158-frame cases. Native G/C shards, both FP32 Adam states, all
+RNG and data cursors restored bitwise on all eight GPUs. Severe late blur and
+viewpoint/layout errors remain; this validates functionality, not convergence.
 
 The H3 roadmap has three stages:
 
 1. Camera-conditioned flow matching, described below.
 2. [FramePack v2v history conditioning](FRAMEPACK.md), including the SolarWM
    camera merge, data preparation, fresh LoRA training and full-state continuation.
-3. Use the adapted model for bidirectional autoregressive rollout and DMD,
-   following the Wan2.2-TI2V-5B BiWM rollout strategy.
+3. [Bidirectional autoregressive rollout and DMD](DMD.md), following the
+   Wan2.2-TI2V-5B BiWM rollout strategy with native H3 velocity/clock/ProPE.
 
 These names are specific to the H3 release; other backbones retain their two-stage
 interfaces. H3 Stage 2 is not the existing AnyFlow/MeanFlow training recipe.
@@ -174,4 +178,5 @@ The FramePack Stage 2 adapter completed a 10-update 33B LoRA pilot and another
 phase2 training in that GPU path; it does not
 validate the full-target Stage 1 trainer or establish quality convergence.
 See [FRAMEPACK.md](FRAMEPACK.md) for the separate Stage 2 implementation and its
-validation status. DMD still requires actual GPU training and validation.
+validation status. [DMD.md](DMD.md) documents the separate Stage 3 implementation,
+its bounded pilot and pending actual GPU validation.

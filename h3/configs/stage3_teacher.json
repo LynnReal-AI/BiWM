@@ -1,0 +1,43 @@
+{
+  "status": "Native conditional teacher preflight,0G/0C; review all eight cases beforeDMD",
+  "source": {
+    "phase2_checkpoint": "${H3_PHASE2_CHECKPOINT}",
+    "selection": "${H3_PHASE2_SELECTION}",
+    "score_bundle": "${H3_SCORE_BUNDLE}"
+  },
+  "data": {
+    "train_manifest": "${H3_TRAIN_MANIFEST}",
+    "validation_manifest": "${H3_VALIDATION_MANIFEST}",
+    "release_root": "${SOLARWM_RELEASE_ROOT}",
+    "latent_frames": 47,
+    "pixel_frames": 158,
+    "resolution": [
+      768,
+      1344
+    ],
+    "qwen_skip_reference_videos": true,
+    "generator_seed": 142,
+    "critic_seed": 242
+  },
+  "validation": {
+    "indices": [
+      0,
+      2,
+      4,
+      6,
+      8,
+      10,
+      12,
+      13
+    ]
+  },
+  "allowed_world_sizes": [
+    8
+  ],
+  "sampling": {
+    "points": 30,
+    "shift": 3.0,
+    "guidance_scale": 1.0
+  },
+  "scope": "Native158RGB/47latent/768p eightcase teacher with30points,shift3,CFG1. ExportedLive source shared withG/C; review is an explicit separate artifact."
+}

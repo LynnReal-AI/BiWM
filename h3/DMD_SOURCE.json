@@ -1,0 +1,203 @@
+{
+  "at": 1794400541.7927065,
+  "status": "Native8H200 functional pilot completed2G15C with2complete checkpoints/64native MP4s and8rank bitwise GPUrestore; public training port CPUparity verified. Severe late blur/layout drift remain, no convergence claim.",
+  "source_experiment": "biwm_h3_v9",
+  "source_base_commit": "883ab0ba1565716603b1cef5e60cb1639d2fff24",
+  "files": [
+    {
+      "source_experiment": "biwm_h3_v9",
+      "source_file": "core.py",
+      "source_sha256": "49e1744f7b9f1d06ed0669fba144748edc7274b88712b8500a2534c2c29dcc18",
+      "public_path": "h3/dmd/core.py",
+      "public_sha256": "49e1744f7b9f1d06ed0669fba144748edc7274b88712b8500a2534c2c29dcc18",
+      "change": "Import namespace relocation only"
+    },
+    {
+      "source_experiment": "biwm_h3_v9",
+      "source_file": "engine.py",
+      "source_sha256": "fbdf16836fa1fd8a307f34d6fa746e388de0035ab626ac149ad619dc3426d0e8",
+      "public_path": "h3/dmd/engine.py",
+      "public_sha256": "fbdf16836fa1fd8a307f34d6fa746e388de0035ab626ac149ad619dc3426d0e8",
+      "change": "Import namespace relocation only"
+    },
+    {
+      "source_experiment": "biwm_h3_v9",
+      "source_file": "memory.py",
+      "source_sha256": "3dbbe795e51aa6dd2c11801e40745e9f49da522c9a61584eff5ee3b33457d4ea",
+      "public_path": "h3/dmd/memory.py",
+      "public_sha256": "3dbbe795e51aa6dd2c11801e40745e9f49da522c9a61584eff5ee3b33457d4ea",
+      "change": "Import namespace relocation only"
+    },
+    {
+      "source_experiment": "biwm_h3_v9",
+      "source_file": "score.py",
+      "source_sha256": "ec67cfce34542039f3fcae22100a90a60a434b1281f3cec129ede70f8078fd0f",
+      "public_path": "h3/dmd/score.py",
+      "public_sha256": "ec67cfce34542039f3fcae22100a90a60a434b1281f3cec129ede70f8078fd0f",
+      "change": "Import namespace relocation only"
+    },
+    {
+      "source_experiment": "biwm_h3_v9",
+      "source_file": "state.py",
+      "source_sha256": "6d9d73c936889efadea9a60051bf51e863aed4ce7274014c9721ccb07956499d",
+      "public_path": "h3/dmd/state.py",
+      "public_sha256": "6d9d73c936889efadea9a60051bf51e863aed4ce7274014c9721ccb07956499d",
+      "change": "Import namespace relocation only"
+    },
+    {
+      "source_experiment": "biwm_h3_v9",
+      "source_file": "initialization.py",
+      "source_sha256": "08483a05f87ee1da7c7efb0f75d7e5e238eb744d772c742d8750fd5749a9b699",
+      "public_path": "h3/dmd/initialization.py",
+      "public_sha256": "02a2e658abe6f5dacad53168243e4854fbfa22ac642711b3d012875a39459fc1",
+      "change": "Import namespace relocation only"
+    },
+    {
+      "source_experiment": "biwm_h3_v9",
+      "source_file": "prepare.py",
+      "source_sha256": "9caa684de5926af500d93d484a4f3806fca280cd0d2c857121ce197236ce1af4",
+      "public_path": "pipelines/h3/prepare_stage3.py",
+      "public_sha256": "418c274f6ea3c879849ba2fec2d4a725a077fbac97f98b781f4d1c0255698eab",
+      "change": "Import namespace relocation only"
+    },
+    {
+      "source_experiment": "biwm_h3_v9",
+      "source_file": "evaluate_teacher.py",
+      "source_sha256": "27f631f0d3c373c447991ad40cd22dcbc560b53d4dcd58aa71606c6f2e595904",
+      "public_path": "pipelines/h3/evaluate_stage3_teacher.py",
+      "public_sha256": "1146ec83a9b27bc51743028e9a6f2b6e0bf80e4a7472ca46d8d88ab2c7f30d73",
+      "change": "Import namespace relocation only"
+    },
+    {
+      "source_experiment": "biwm_h3_v9",
+      "source_file": "train.py",
+      "source_sha256": "9b8ef625bbb2b3726bea5e0471473cefe79cda44b46515088eee6d688fc2027d",
+      "public_path": "pipelines/h3/train_stage3.py",
+      "public_sha256": "7b55442a97d2fd72ff1fb643b7aff1dc6bed037934c56dddbe2989020590b54e",
+      "change": "Import relocation plus continuation contract separates reviewed descriptive/budget metadata; source weights, data/order/RNG, model/score/precision and optimizer contract remain strict. No forward/backward/Adam arithmetic change."
+    }
+  ],
+  "models_or_data_included": false,
+  "actual_DMD_generator_updates_verified": true,
+  "public_GPU_execution": false,
+  "public_CPU_4rank_native9_runtime_parity": true,
+  "public_CPU_gate_scope": "Tiny2x2 CPU/FSDP/rank4LoRA port gate; actual33B/GPU behavior belongs only to frozen experimental source until separately executed",
+  "public_entrypoints_and_docs": [
+    {
+      "path": "pipelines/h3/configure_stage3.py",
+      "sha256": "0ba3d43a7af7b2330f46bc30ffba0bdd494eb048cf7fda89f95267dbe9d6c136"
+    },
+    {
+      "path": "pipelines/h3/verify_stage3_media.py",
+      "sha256": "09bb69e4caedce87a1116e850b82fed1c055638fa7f5e2961460644f95610718"
+    },
+    {
+      "path": "scripts/h3/stage3.sh",
+      "sha256": "c4c21557c69368a889fe74ce67de9fadb612eb7001fb9a2830767f30768d32b4"
+    },
+    {
+      "path": "h3/configs/stage3_pilot.json",
+      "sha256": "734b94685df389ae19cc0a8d3b32189a134f826d99ed0f521c1b5a5c94c4184e"
+    },
+    {
+      "path": "h3/configs/stage3_teacher.json",
+      "sha256": "e4346c56837c6a6a75a5b9a1a35111d77ef3a88dda85273782395e24c710f216"
+    },
+    {
+      "path": "h3/DMD.md",
+      "sha256": "552f74c4cd31ef609a2b348fb3d9534632795ce235efd1b692a1ff67c2d0af8d"
+    },
+    {
+      "path": "tests/test_h3_dmd_config.py",
+      "sha256": "0aa22595fa24c55d4cb869404452a828437013df2492576e6d21c614b62dcd77"
+    },
+    {
+      "path": "tests/h3_dmd_smoke.py",
+      "sha256": "e26de138ae1c6469c3d5eb49214acd3b49ee7537f968bb681bac1e2fa78b8cbe"
+    },
+    {
+      "path": "tests/h3_dmd_fixtures.py",
+      "sha256": "78470df08b94ab2171ac2ee7f4fd12715955ec4d51c2f07981578d80cd2ca4ec"
+    },
+    {
+      "path": "tests/h3_dmd_restore.py",
+      "sha256": "16af8e3d87701bfe6a5d98faf5d0c6b9aae8324a4be2e2de1ff0a51f5c49ed41"
+    }
+  ],
+  "entrypoint_validation": {
+    "config_provenance_regressions": 7,
+    "real_source_config_preparation": true,
+    "native_existing_teacher32_MP4_independent_verify": true,
+    "public_entrypoint_crossrun_nextcycle_CPU_bitwise": true
+  },
+  "framepack_compatibility_change": {
+    "public_path": "h3/framepack_checkpoint.py",
+    "scope": "Optional validation_root permits selecting a reviewed intermediate phase2 source after final budget/media completion; default phase2 behavior unchanged",
+    "public_sha256": "9609df9ba5a7727a596544e8f0f6ff88a4c5d10e5230b9164bc253cd02bf3ded"
+  },
+  "native_GPU_restore_gate": {
+    "path": "tests/h3_dmd_restore.py",
+    "status": "passed on all8H200 from G2C15; allG/Cshards, bothFP32Adams, CPU/CUDA/Python/NumPy/namedRNG andcursors bitwise; no next GPUoptimizer step",
+    "new_optimizer_updates": 0,
+    "CPU_comparator_gate_passed": true,
+    "source_checkpoint_complete_sha256": "f67666b6b9e93c486c757bb2a1e9295b5d88bb2e14645c13d5fa15e8ce7aa6b8",
+    "complete_sha256": "1511fe8a14ffe089b4645888ed6dd12d2963ea14ca90d58420a1f6dd2e53f069"
+  },
+  "native_GPU_replay_probe": {
+    "all8rank_passed": true,
+    "full_native33B_roles": true,
+    "shape": [
+      1,
+      24,
+      47,
+      48,
+      84
+    ],
+    "chunks": 9,
+    "max_peak_GiB": 98.77883338928223,
+    "max_seconds": 138.9008208240848,
+    "max_unallocated_G_Adam_budget_GiB": 7.659466803073883,
+    "extra_GPU_margin_GiB": 10,
+    "new_G": 0,
+    "new_C": 0,
+    "scope": "Actualnative backwardcapacity with deterministicnonzero testcotangent/lazyAdams; not actualDMDupdate, checkpoint orquality"
+  },
+  "public_replay_gate": "4rank original-vs-replay and public-vs-private final models/twoAdams/RNG/cursors bitwise; crossrun/restore comparator bitwise",
+  "public_GPU_restore_execution": true,
+  "actual_fullnative_training": {
+    "G": 2,
+    "C": 15,
+    "warmup_C": 5,
+    "actual_G_samples": 16,
+    "actual_C_samples": 120,
+    "G2_loss": 0.04607791690558215,
+    "C15_loss": 0.021519587142392993,
+    "G2_peak_GiB": 106.48593997955322,
+    "C_peak_GiB": 109.35324668884277,
+    "complete_checkpoint_bytes_each": 561936242960,
+    "complete_checkpoints": [
+      {
+        "G": 1,
+        "C": 10
+      },
+      {
+        "G": 2,
+        "C": 15
+      }
+    ],
+    "native_MP4s": 64,
+    "cases_per_validation": 8,
+    "RGB_frames": 158,
+    "resolution": [
+      768,
+      1344
+    ],
+    "training_source": "biwm_h3_v9 frozen experimental source; extracted public core/engine/memory exact bytes and4rankCPU parity; nativeGPUrestore uses pinned public snapshot",
+    "quality_converged": false,
+    "quality_review_sha256": "d5e9912aad08e845493c454c6a8d7af200fee383fea87d4ceb0b6296becf9a34",
+    "media_verification_sha256": [
+      "3cac1ed3293dae6bd52ce3e431fedd4ca0c0e6f1937f7798a55c03762ab3fb92",
+      "3f841e8d0cc4aecc13279b21d5fd56d6cb68f0be4ac05ef69cd2f2e839bd57c2"
+    ]
+  }
+}

@@ -25,8 +25,8 @@
       "source_file": "continuation.py",
       "source_sha256": "71d84d04798d517741184e5dd17da7803a0e83480e095aa961722c9d213bbb5c",
       "public_path": "h3/framepack_checkpoint.py",
-      "public_sha256": "f7dd180036463f59ed666330190f95dd496273da7461e5ffc7540316d00fbb3c",
-      "changes": "Namespace relocation and shared rigid-pose helper extraction only; training arithmetic preserved"
+      "public_sha256": "9609df9ba5a7727a596544e8f0f6ff88a4c5d10e5230b9164bc253cd02bf3ded",
+      "changes": "Namespace relocation and shared rigid-pose helper extraction only; training arithmetic preserved; optional matched validation_root added for stage3 source selection, preserving default behavior"
     },
     {
       "source_experiment": "biwm_h3_v5",

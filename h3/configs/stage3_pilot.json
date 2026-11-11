@@ -1,0 +1,157 @@
+{
+  "status": "Finite2G15C example; actual training and quality require native GPU validation",
+  "stage": "BiWM H3 phase3 full-native short DMD pilot",
+  "reference": {
+    "BiWM_commit": "b032ad50d68c75f0cbc314e1e4ceea598d3c791d",
+    "files": [
+      "pipelines/wan/dmd_core.py",
+      "pipelines/wan/train_stage2.py",
+      "scripts/wan22/stage2_dmd.sh"
+    ],
+    "gold_rule": "Applicable nativeH3 precision/clock/complete-state/G5C/delivery contracts only; camera-only BiWM user route supersedes HAND/AnyFlow/dual-KL objectives"
+  },
+  "source": {
+    "phase2_checkpoint": "${H3_PHASE2_CHECKPOINT}",
+    "selection": "${H3_PHASE2_SELECTION}",
+    "score_bundle": "${H3_SCORE_BUNDLE}",
+    "teacher_quality_review": "${H3_TEACHER_REVIEW}",
+    "teacher_media_verification": "${H3_TEACHER_MEDIA}",
+    "teacher_complete": "${H3_TEACHER_RUN}/COMPLETE.json"
+  },
+  "data": {
+    "train_manifest": "${H3_TRAIN_MANIFEST}",
+    "validation_manifest": "${H3_VALIDATION_MANIFEST}",
+    "release_root": "${SOLARWM_RELEASE_ROOT}",
+    "latent_frames": 47,
+    "pixel_frames": 158,
+    "resolution": [
+      768,
+      1344
+    ],
+    "qwen_skip_reference_videos": true,
+    "generator_seed": 142,
+    "critic_seed": 242
+  },
+  "objectives": [
+    "DMD",
+    "critic_FM"
+  ],
+  "train": {
+    "initial_generator_step": 0,
+    "max_generator_steps": 2,
+    "max_critic_steps": 15,
+    "critic_warmup": 5,
+    "critic_capacity": "full",
+    "generator_capacity": "LoRA384_QKVO_FFN_plus_FramePack_compressor",
+    "attention_backend": "_flash_3",
+    "SP": 1,
+    "effective_batch": 8,
+    "micro_batch": 1,
+    "allowed_world_sizes": [
+      8
+    ],
+    "gpu": "H200",
+    "FSDP": "FULL_SHARD"
+  },
+  "optimizer": {
+    "generator": {
+      "lr": 1e-05,
+      "betas": [
+        0.0,
+        0.999
+      ],
+      "eps": 1e-08,
+      "weight_decay": 0.0
+    },
+    "critic": {
+      "lr": 2e-06,
+      "betas": [
+        0.0,
+        0.999
+      ],
+      "eps": 1e-08,
+      "weight_decay": 0.0
+    }
+  },
+  "dmd": {
+    "blocks": 9,
+    "start_sigmas": [
+      1.0,
+      0.75,
+      0.5,
+      0.25
+    ],
+    "shift": 3.0,
+    "real_guidance_scale": 1.0,
+    "score_sigma": {
+      "min": 0.02,
+      "max": 0.98,
+      "shift": 3.0,
+      "ts_schedule": true
+    },
+    "clip": {
+      "generator": 5.0,
+      "critic": 5.0
+    },
+    "critic_optimizer_offload_for_generator": true,
+    "generator_chunk_replay": true
+  },
+  "validation": {
+    "latent_frames": 47,
+    "rgb_frames": 158,
+    "indices": [
+      0,
+      2,
+      4,
+      6,
+      8,
+      10,
+      12,
+      13
+    ],
+    "baseline_root": "${H3_DMD_BASELINE_ROOT}",
+    "seed": "42+case_id",
+    "GT": "GT VAE reconstruction; original RGB not locally extracted"
+  },
+  "checkpoint_steps": [
+    1,
+    2
+  ],
+  "validation_steps": [
+    1,
+    2
+  ],
+  "seed": 42,
+  "rng": {
+    "generator": 424242,
+    "critic": 434343,
+    "score": 444444,
+    "control": 454545
+  },
+  "precision": {
+    "DiT": "BF16 blocks with native FP32 projection/time paths",
+    "optimizer": "FP32 master/moments",
+    "gradient_reduce": "FP32",
+    "clip_norm": "FP64",
+    "checkpoint_inputs": "CPU input placement with recomputation",
+    "VAE": "native FP32 weights/FP16 autocast; instance-local SDPA only"
+  },
+  "deliberate_differences": [
+    "Native H3 velocity=x0-noise, x0_hat=noisy+sigma*velocity, model clean-time=1-sigma.",
+    "Original published SolarWM camera merge plus explicitly reviewed phase2 Live; camera/video-only native input, no HAND/audio rows.",
+    "Real continuous W2C trajectories and H3 ProPE replace Wan camera-action text.",
+    "Generator retains phase2 LoRA384 plus FramePack compressor on a frozen33B base; critic is the full native model.",
+    "Native158RGB/47latent/9chunks at768x1344, first7/later5 latent, generated-only detached history and fresh visible-history packing; no KV cache.",
+    "Four-map student starts[1,.75,.5,.25], shift3 -> [1,.9,.75,.5,0]. Native teacher preflight selects explicitCFG1/30points/shift3.",
+    "Score U->shift3->clamp[.02,.98] with randomized-exit floor; full-video real/fake share noisy sample and anchor.",
+    "Exactly five fresh actual critic Adams perG, five initial critic warmup Adams, finite2G15C example.",
+    "FP32 master/moments/reduction and FP64 norm; idle critic Adam slots park onCPU forG and return toGPU forC without changing arithmetic.",
+    "First/final complete G/C+twoAdam+RNG/data-cursor checkpoints; save matched validation latents then free allDiTs before native VAE MP4 decoding."
+  ],
+  "stop_conditions": [
+    "Any nonfinite generated/score/loss/gradient value rejects the update",
+    "No missing rank or mismatched G/C counts accepted as a completed update",
+    "Do not extend beyond2G/15C without inspecting native teacher, memory, actual full-critic/G updates and8case media",
+    "No phase3 launch before full phase2 budget/final8case media and explicit matched-source selection"
+  ]
+}

@@ -124,4 +124,6 @@ FP16 SDPA with FP32 weights; the DiT remains on FA3. Native MP4 frame counts and
 full decoding must pass before a case is complete. Training loss and file
 integrity do not replace a visual quality review.
 
-H3 Stage 3 DMD will be published after actual GPU training and validation.
+See [H3 Stage 3 DMD](DMD.md) for native teacher preflight, full-critic self-forcing
+training and complete-state checkpoints. Actual GPU generator and DMD media
+acceptance remains pending.
