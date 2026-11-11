@@ -1,6 +1,6 @@
 {
-  "at": 1794400541.7927065,
-  "status": "Native8H200 functional pilot completed2G15C with2complete checkpoints/64native MP4s and8rank bitwise GPUrestore; public training port CPUparity verified. Severe late blur/layout drift remain, no convergence claim.",
+  "at": 1794402389.8062658,
+  "status": "Native8H200 functional2G15C pilot complete with2checkpoints/64nativeMP4s and8rankbitwise restore. Publicentrypoint subsequentlycontinued G2C15 through G3C20 actual1G5C. Fullv10budget inprogress; lateblur/layout drift remain.",
   "source_experiment": "biwm_h3_v9",
   "source_base_commit": "883ab0ba1565716603b1cef5e60cb1639d2fff24",
   "files": [
@@ -79,7 +79,7 @@
   ],
   "models_or_data_included": false,
   "actual_DMD_generator_updates_verified": true,
-  "public_GPU_execution": false,
+  "public_GPU_execution": true,
   "public_CPU_4rank_native9_runtime_parity": true,
   "public_CPU_gate_scope": "Tiny2x2 CPU/FSDP/rank4LoRA port gate; actual33B/GPU behavior belongs only to frozen experimental source until separately executed",
   "public_entrypoints_and_docs": [
@@ -105,7 +105,7 @@
     },
     {
       "path": "h3/DMD.md",
-      "sha256": "552f74c4cd31ef609a2b348fb3d9534632795ce235efd1b692a1ff67c2d0af8d"
+      "sha256": "21fa166c86b64bc65cdacba23d3788d0a87c25a9fc43313d06f5f12266797d03"
     },
     {
       "path": "tests/test_h3_dmd_config.py",
@@ -198,6 +198,50 @@
     "media_verification_sha256": [
       "3cac1ed3293dae6bd52ce3e431fedd4ca0c0e6f1937f7798a55c03762ab3fb92",
       "3f841e8d0cc4aecc13279b21d5fd56d6cb68f0be4ac05ef69cd2f2e839bd57c2"
-    ]
+    ],
+    "quality_review_addendum_sha256": "d7511cd9f0e18a4f753cd3ece30e80904042de83b8b8731ae01a55ffbb7a3d7f",
+    "quality_review_addendum_scope": "Consecutivecase012frames138..143withdraw definite140/141seamjump assertion; severe lateblur andviewpoint/layout errors remain, no convergenceclaim. Originalpinnedreview preserved."
+  },
+  "public_native_GPU_continuation": {
+    "public_training_commit": "20c784998a53399181879d6b7bfb95ad38854f19",
+    "actual_native_H200_world_size": 8,
+    "inherited": {
+      "G": 2,
+      "C": 15
+    },
+    "actual_new": {
+      "G": 1,
+      "C": 5,
+      "G_samples": 8,
+      "C_samples": 40
+    },
+    "cumulative": {
+      "G": 3,
+      "C": 20
+    },
+    "no_new_warmup": true,
+    "full_native33B_critic": true,
+    "latent_frames": 47,
+    "chunks": 9,
+    "RGB_frames": 158,
+    "resolution": [
+      768,
+      1344
+    ],
+    "generator_replay": true,
+    "first_new_G": {
+      "role": "generator",
+      "step": 3,
+      "global_loss": 0.03275047121791162,
+      "raw_grad_norm": 0.004797279699243974,
+      "max_seconds": 183.24217311106622,
+      "max_peak_GiB": 106.47306728363037,
+      "idle_critic_Adam_parked_bytes_global": 397471721088
+    },
+    "source_checkpoint_complete_sha256": "f67666b6b9e93c486c757bb2a1e9295b5d88bb2e14645c13d5fa15e8ce7aa6b8",
+    "executed_config_sha256": "3ab253f5ec8709a08b6ef408b5abed343a22eb73b8abea23624caa6ca0660ed4",
+    "scope": "Actualpublic entrypoint nativeGPU restored-state continuation full1G5C cycle; newcheckpoint/media/final18G90C budget andquality separate",
+    "gate_sha256": "33e0d6febfa71c5ab03b4f679edea641a73dac946082749369481cd9279b1827",
+    "larger_run_budget_complete": false
   }
 }

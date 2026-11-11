@@ -37,7 +37,9 @@ this is functional training validation, not convergence. The separate
 full-critic self-forcing training and complete-state checkpoints. The native
 8×H200 pilot completed 2G/15C, two complete checkpoints, eight 158-frame cases at
 each G step, and bitwise GPU state restore. Late blur and camera/layout drift
-remain; this is functional validation, not converged model quality. See the [H3 guide](h3/README.md).
+remain; this is functional validation, not converged model quality. The public
+entrypoint also passed a full-state native GPU continuation through another
+1G/5C cycle. See the [H3 guide](h3/README.md).
 
 | Backbone | Stage 1 | Stage 2 DMD |
 |---|:--:|:--:|

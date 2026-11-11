@@ -8,7 +8,7 @@ bytes each). Each G step delivers eight native 158-frame cases and 32 MP4s; all
 64 videos passed independent frame/geometry/full-decode/SHA checks. A separate
 eight-GPU restore reproduced both models, both FP32 Adam states, all RNG streams
 and data cursors bitwise without new optimizer updates. Sampled review still
-shows severe late blur, viewpoint/layout drift and a late chunk discontinuity;
+shows severe late blur and viewpoint/layout drift;
 this is a functional pilot, not a converged model-quality release.
 Source extraction and validation scope are recorded in [DMD_SOURCE.json](DMD_SOURCE.json).
 
@@ -72,8 +72,12 @@ the critic reached 109.36 GiB. It retained the full native model/span/resolution
 and transferred idle critic FP32 Adam slots between CPU/GPU without dropping state.
 The extracted public engine matches the frozen experimental engine bitwise in
 four-rank tiny CPU tests. Native GPU restore also ran this public implementation;
-the original optimizer-update run used the frozen experimental entrypoint. These
-scopes are distinct, and none establishes converged video quality.
+the original 2G/15C run used the frozen experimental entrypoint. The public
+entrypoint subsequently continued the complete G2/C15 state through another
+native eight-H200 1G/5C cycle to G3/C20, without optimizer/RNG/data resets or
+additional critic warmup. G3 used 183.24 seconds with 106.47 GiB peak allocated
+memory. Its larger bounded continuation remains in progress; these functional
+gates do not establish converged video quality.
 
 ## Select and export Stage 2 Live
 

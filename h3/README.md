@@ -11,6 +11,8 @@ The native 8×H200 pilot completed 2G/15C, two complete checkpoints and two roun
 of eight native 158-frame cases. Native G/C shards, both FP32 Adam states, all
 RNG and data cursors restored bitwise on all eight GPUs. Severe late blur and
 viewpoint/layout errors remain; this validates functionality, not convergence.
+The public entrypoint also completed another native eight-H200 1G/5C cycle after
+restoring G2/C15, preserving both optimizers, RNG streams and data cursors.
 
 The H3 roadmap has three stages:
 
