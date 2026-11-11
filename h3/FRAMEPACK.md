@@ -50,6 +50,16 @@ python -m pipelines.h3.merge_solarwm_camera \
 Supply the original SolarWM camera WDS index and release shards. Preparation
 keeps cached Qwen/anchor/video tensors and first-relative W2C poses; it does not
 encode raw RGB, interpolate frames, or infer camera poses from action labels.
+These preparation commands expect 47 already latent-aligned camera rows. Native
+H3 uses pixel offsets `[0,1,5,9,13]` in each 17-frame period, ending at pixel154
+for a 158-frame clip. The published checkpoint manifest also describes raw
+158-row camera artifacts; the native reader aligns those upstream. Already
+aligned caches must not be uniformly resampled or truncated again. All14 held-out
+camera caches were compared bitwise with that native reader, across7domains.
+
+The published SolarWM profile includes encoded silence audio; this BiWM video
+path omits audio rows as described in the Stage1 scope. Camera/data agreement
+does not establish equivalence to the original complete audiovisual input.
 The small functional pilot selects 16 training and 2 validation source clips per domain.
 The full manifest excludes all windows and derived 160-frame siblings of the
 14 validation source groups. This is a dataset-source-clip split, not a scene

@@ -75,7 +75,7 @@
     },
     {
       "public_path": "h3/FRAMEPACK.md",
-      "public_sha256": "89332cd9c2ff49f87b9a5828681b72626d54c79f16d6a9b249857dc61401faeb",
+      "public_sha256": "cafdaf44d741ea5f9c40690b53f95288038f3e5f4dd9d6b6200a2b1a49e1c543",
       "scope": "Launcher/configuration/documentation prepared locally"
     },
     {
@@ -144,5 +144,15 @@
     "quality": "Mixed static-frame improvements; long camera/geometry drift remains; no convergence claim",
     "GPU4_actual_update_verified": false,
     "DMD_GPU_started": false
+  },
+  "camera_source_audit": {
+    "source_experiment": "biwm_h3_v5",
+    "audit_sha256": "0bd86da9b8da355a88df0503e008835870e12543b11df143ce74efbd75290d2c",
+    "metadata_windows_checked": 126,
+    "validation_cache_cases": 14,
+    "domains": 7,
+    "native_W2C_intrinsics_bitwise_equal": true,
+    "ProPE_function_AST_identical": true,
+    "scope": "Camera/data source agreement only; no full audiovisual input equivalence or quality claim"
   }
 }
