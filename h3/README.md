@@ -1,22 +1,24 @@
 # MiniMax-H3 in BiWM
 
-BiWM now includes a **camera-only MiniMax-H3 Stage 1 training implementation**,
-adapted from the `stage0.5_v7` training source. This release provides native
-bidirectional flow matching with ProPE camera injection. FramePack v2v adaptation
-and autoregressive DMD are subsequent stages and are not included in this release.
+BiWM includes a **camera-only MiniMax-H3 training implementation**, adapted from
+the `stage0.5_v7` source, with native bidirectional flow matching and ProPE camera
+injection. This branch also contains [Stage 2 FramePack v2v](FRAMEPACK.md): merge
+the official SolarWM camera LoRA, then train a fresh LoRA and history compressor.
+Its final training/release review is pending. Autoregressive DMD is Stage 3 and
+is not included here.
 
 The H3 roadmap has three stages:
 
-1. Camera-conditioned flow matching (this release).
-2. Merge the SolarWM camera LoRA into the base, then train a fresh LoRA for
-   FramePack v2v history conditioning.
+1. Camera-conditioned flow matching, described below.
+2. [FramePack v2v history conditioning](FRAMEPACK.md), including the SolarWM
+   camera merge, data preparation, fresh LoRA training and full-state continuation.
 3. Use the adapted model for bidirectional autoregressive rollout and DMD,
    following the Wan2.2-TI2V-5B BiWM rollout strategy.
 
 These names are specific to the H3 release; other backbones retain their two-stage
 interfaces. H3 Stage 2 is not the existing AnyFlow/MeanFlow training recipe.
 
-## Scope
+## Stage 1 scope
 
 The original `stage0.5_v7` experiment trained the full 33B transformer with HAND
 conditions and auxiliary losses. This implementation intentionally simplifies it:
@@ -169,4 +171,5 @@ An unreleased FramePack Stage 2 adapter then completed 10 actual 33B LoRA update
 complete eight-rank Live checkpoints, and eight 39-frame validation cases at
 1344×768. This verifies the shared FA3 repair in that GPU path; it does not
 validate the full-target Stage 1 trainer or establish quality convergence.
-FramePack and DMD code remain pending their separate training/validation release.
+See [FRAMEPACK.md](FRAMEPACK.md) for the separate Stage 2 implementation and its
+validation status. DMD still requires actual GPU training and validation.

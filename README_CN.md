@@ -25,8 +25,10 @@ https://github.com/user-attachments/assets/e0f8de57-bc5e-4377-9db5-1dc581eacf03
 
 **2026-11-10：新增 MiniMax-H3 架构适配。** 本次先发布仅保留 ProPE 相机注入的
 第一阶段 flow-matching 训练代码，支持 LoRA / 全参微调，不包含手势条件和辅助损失。
-H3 按三阶段推进：相机训练 → FramePack v2v LoRA 适配 → 双向自回归 DMD；
-后两阶段在训练验证后发布。环境、数据和运行方式见 [H3 使用说明](h3/README.md)。
+H3 按三阶段推进：相机训练 → FramePack v2v LoRA 适配 → 双向自回归 DMD。
+当前分支另包含 [FramePack v2v 实现和短测/全量数据配置](h3/FRAMEPACK.md)，
+仍待最终训练和发布审查；H3 DMD 在实际训练验证后发布。
+环境、数据和运行方式见 [H3 使用说明](h3/README.md)。
 
 | Backbone | Stage 1 | Stage 2 DMD |
 |---|:---:|:---:|
@@ -34,7 +36,7 @@ H3 按三阶段推进：相机训练 → FramePack v2v LoRA 适配 → 双向自
 | Wan2.2-TI2V-5B | ✅ | ✅ |
 | HunyuanVideo-1.5-8B | ✅ 相机文本 / 离散动作 | ✅ |
 | LTX-Video 2.3-22B | ✅ | ✅ |
-| MiniMax-H3-33B | ✅ ProPE 相机训练代码 | 待 H3 FramePack 适配后发布 |
+| MiniMax-H3-33B | ✅ ProPE 相机 FM；本分支含 FramePack v2v | 计划为 H3 第三阶段 |
 
 ## 安装
 
@@ -90,6 +92,10 @@ STAGE1_DIR=./logs/ltx23/stage1 bash scripts/ltx23/stage2_dmd.sh
 ```
 
 常用覆盖变量：`BIWM_VIDEO_DIR`、`BIWM_CAPTION_JSON`、`OUTPUT_DIR`、`PYTHON_BIN`、`MAX_TRAIN_STEPS`、`CHECKPOINTING_STEPS`。
+
+H3 使用独立环境及预编码相机数据，见 [H3 使用说明](h3/README.md)。
+其第二阶段先合并原 SolarWM 相机 LoRA，再训练新的 LoRA 和 FramePack 历史压缩器；
+准备数据、短测、完整状态续训及原生视频验证见 [FramePack 使用说明](h3/FRAMEPACK.md)。
 
 ## 引用
 

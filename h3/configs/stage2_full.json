@@ -2,7 +2,7 @@
   "stage": "H3 Stage2 FramePack v2v camera-only FM",
   "model_base": "${H3_BASE}",
   "adapter": "${SOLARWM_CAMERA_LORA}",
-  "initialization": "Continue pilot Live10 LoRA+FramePack compressor+FP32 master/Adam+8rank RNG; underlying base remains original official SolarWM camera10500 FP32 merge",
+  "initialization": "Continue pilot Live10 LoRA+FramePack compressor+FP32 master/Adam+same-world RNG; underlying base remains original official SolarWM camera10500 FP32 merge",
   "initialization_path": "${H3_CAMERA_MERGED}",
   "data_path": "${H3_CACHE_DIR}",
   "conditions": [

@@ -29,8 +29,10 @@ https://github.com/user-attachments/assets/e0f8de57-bc5e-4377-9db5-1dc581eacf03
 **2026-11-10: MiniMax-H3 support added.** The first H3 release provides camera-only
 ProPE flow-matching training with LoRA/full fine-tuning. H3 uses a three-stage
 roadmap: camera training → FramePack v2v LoRA adaptation → bidirectional AR DMD.
-Only camera Stage 1 is included in this release; the later stages will follow
-after training and validation. See the [H3 guide](h3/README.md).
+This branch also includes the [H3 FramePack v2v implementation](h3/FRAMEPACK.md)
+and pilot/full-data configurations. Its final training and release review are
+pending; H3 DMD will follow after actual training and validation. See the
+[H3 guide](h3/README.md).
 
 | Backbone | Stage 1 | Stage 2 DMD |
 |---|:--:|:--:|
@@ -38,7 +40,7 @@ after training and validation. See the [H3 guide](h3/README.md).
 | Wan2.2-TI2V-5B | ✅ | ✅ |
 | HunyuanVideo-1.5-8B | ✅ cam-text + discrete action | ✅ |
 | LTX-Video 2.3-22B | ✅ | ✅ |
-| MiniMax-H3-33B | ✅ ProPE camera code | Planned after H3 FramePack adaptation |
+| MiniMax-H3-33B | ✅ ProPE camera FM; FramePack v2v in this branch | Planned as H3 Stage 3 |
 
 ## Setup
 
@@ -140,6 +142,8 @@ OUTPUT_DIR=/path/to/new/run NPROC_PER_NODE=8 bash scripts/h3/stage1.sh
 
 The H3 path keeps ProPE camera injection and a single flow-matching MSE loss.
 It has no gesture/HAND conditioning or auxiliary perceptual losses.
+For the separate H3 Stage 2, merge the official SolarWM camera LoRA and train a
+fresh LoRA plus FramePack compressor using the [FramePack guide](h3/FRAMEPACK.md).
 
 ## Inference
 
@@ -162,7 +166,7 @@ python pipelines/wan/infer_stage2.py \
 | `pipelines/wan/` | Wan Stage 1, DMD, inference, and compression |
 | `pipelines/hy15/` | HY15 Stage 1 and DMD |
 | `pipelines/ltx23/` | LTX23 Stage 1 and DMD |
-| `h3/`, `pipelines/h3/` | H3 camera-only Stage 1 components and training |
+| `h3/`, `pipelines/h3/` | H3 camera FM, SolarWM merge/data preparation, and FramePack v2v |
 | `pipelines/common/` | Shared DMD, optimizer, and control code |
 | `wan/`, `hunyuan/`, `ltx23/` | Backbone implementations |
 | `scripts/` | Public training and inference entrypoints |

@@ -10,21 +10,31 @@ from generated history. ProPE covers anchor, target and compressed history at
 their physical camera-frame indices. There are no HAND conditions or auxiliary
 losses, and no KV cache.
 
-The native first chunk is7latents/22RGB frames; subsequent chunks are5latents/
-17RGB frames. All9chunks cover47latents/158RGB frames at1344×768. Qwen encodes
+The first chunk contains 7 latents (22 RGB frames); later chunks contain 5 latents
+(17 RGB frames). All 9 chunks cover 47 latents / 158 RGB frames at 1344×768. Qwen encodes
 the target first image and caption only; the independent VAE anchor keeps its
 native `.999` time. H3 MM-RoPE and ProPE suffixes retain the Stage1 contract.
 
 The modules are extracted from the frozen training source recorded in
 [FRAMEPACK_SOURCE.json](FRAMEPACK_SOURCE.json). Four-rank CPU tests compare the
-original/public loss, gradients, FP32 Adam, checkpoint-next-update and47latent
+original/public loss, gradients, FP32 Adam, checkpoint-next-update and 47-latent
 rollout bitwise. These tests do not establish H200 memory capacity or quality.
+
+GPU validation on 2026-11-11 used one 8×H200 allocation and the actual 33B model.
+The 10-update pilot completed, followed by full-data continuation on 629800 windows
+with a fixed budget of 1000 additional updates. Complete eight-rank Live110/260/510
+checkpoints and both intermediate 8-case, 158-frame validations have been produced;
+final Live1010 training and validation are still pending. Each intermediate set
+contains 32 MP4s, including GT comparisons, with frame/geometry and complete decode
+checks. Static frame review shows mixed improvements over Live10 and persistent
+late camera/geometry drift; it does not establish convergence. The four-GPU
+accumulation2 path has CPU coverage but has not completed a 33B H200 update.
 
 ## Camera initialization and data
 
 Use the H3 environment from [README.md](README.md), plus the `ffmpeg` and
 `ffprobe` system binaries. The merge command below accepts the original
-SolarWM `ema.pt` release schema with312rank384pairs. This external published
+SolarWM `ema.pt` release schema with 312 rank-384 pairs. This external published
 camera checkpoint is the selected initialization; it does not inherit the
 workspace's gesture-trained checkpoints. The merge computes in FP32 and
 retains each original base-weight dtype.
@@ -40,9 +50,9 @@ python -m pipelines.h3.merge_solarwm_camera \
 Supply the original SolarWM camera WDS index and release shards. Preparation
 keeps cached Qwen/anchor/video tensors and first-relative W2C poses; it does not
 encode raw RGB, interpolate frames, or infer camera poses from action labels.
-The small functional pilot selects16train and2validation source clips/domain.
-The full manifest excludes all windows and derived160-frame siblings of the
-14validation source groups. This is a dataset-source-clip split, not a scene
+The small functional pilot selects 16 training and 2 validation source clips per domain.
+The full manifest excludes all windows and derived 160-frame siblings of the
+14 validation source groups. This is a dataset-source-clip split, not a scene
 or unseen-pretraining benchmark.
 
 ```bash
@@ -59,8 +69,8 @@ export H3_TRAIN_MANIFEST=/path/to/new/full_manifest/train.jsonl
 
 ## Pilot, continuation and validation
 
-Both example configurations use LoRA rank=alpha384, all312QKVO/FFN targets,
-FP32 master AdamW at1e-5, shift3, and effective batch8. The trainer explicitly
+Both example configurations use LoRA rank=alpha=384, all 312 QKVO/FFN targets,
+FP32 master AdamW at 1e-5, shift3, and effective batch8. The trainer explicitly
 requires H200/FA3. Eight GPUs use accumulation1; four use accumulation2. Exact
 checkpoint resume and pilot-to-full continuation require the saved world size.
 The ordered global sample batches agree across topologies, but floating-point
@@ -76,17 +86,17 @@ H3_CONFIG=h3/configs/stage2_full.json NPROC_PER_NODE=8 bash scripts/h3/stage2.sh
 
 The launcher expands the explicit path variables and hashes the actual training
 manifest. The full example restores Live10, FP32 Adam and RNG, then performs
-1000additional updates throughglobal1010 on the new full-data sample order.
+1000 additional updates through global1010 on the new full-data sample order.
 It retains the source model/conditioning/loss/optimizer contract. Every complete
 checkpoint includes all FSDP rank files and a final `COMPLETE.json` marker.
 
-The pilot delivers8cases at39frames. The full configuration uses8fixed cases
-across7domains, saves checkpoints at110/260/510/1010, and delivers158frame
-comparisons at260/510/final1010. Each case contains raw generated MP4s,
+The pilot delivers 8 cases at 39 frames. The full configuration uses 8 fixed cases
+across 7 domains, saves checkpoints at 110/260/510/1010, and delivers 158-frame
+comparisons at 260/510/final1010. Each case contains raw generated MP4s,
 `GT | result`, and `GT | baseline | result`. GT is explicitly marked as a native
 VAE reconstruction when original RGB is unavailable. The VAE uses instance-only
 FP16 SDPA with FP32 weights; the DiT remains on FA3. Native MP4 frame counts and
 full decoding must pass before a case is complete. Training loss and file
 integrity do not replace a visual quality review.
 
-H3 Stage3DMD is released separately after actual GPU training and validation.
+H3 Stage 3 DMD will be published after actual GPU training and validation.

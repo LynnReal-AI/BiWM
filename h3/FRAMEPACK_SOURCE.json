@@ -75,18 +75,33 @@
     },
     {
       "public_path": "h3/FRAMEPACK.md",
-      "public_sha256": "4d9a3ee2b10f111e68ddf3b77a3ffbecb6613ec26b4e03fc1410c5090f065d71",
+      "public_sha256": "ce6bbaf76473466a34545a65dcbcb71070f32e23070562c51aa9a7ad41146945",
       "scope": "Launcher/configuration/documentation prepared locally"
     },
     {
       "public_path": "h3/configs/stage2_full.json",
-      "public_sha256": "a7b12a46fd2918911f3a7d6a2950e28c8d0a8c93e7e39371e37c6a4a87121c11",
+      "public_sha256": "01ae5ea32488369dc43a32f21631079e59d41534cfe913eeba57b91e38e13eb8",
       "scope": "Launcher/configuration/documentation prepared locally"
     },
     {
       "public_path": "h3/configs/stage2_pilot.json",
       "public_sha256": "96b93bc33fc36022fc2b20abd80b2ac012b28ac186a9ad616f88b63aa1d54bc2",
       "scope": "Launcher/configuration/documentation prepared locally"
+    },
+    {
+      "public_path": "README.md",
+      "scope": "Stage2 navigation and implementation scope; unreleased local branch",
+      "public_sha256": "5bf2089b194d91a1312d85daafebc48a561f97fd799b07ac42cbcdc7f41a22c1"
+    },
+    {
+      "public_path": "README_CN.md",
+      "scope": "Stage2 navigation and implementation scope; unreleased local branch",
+      "public_sha256": "257c206b5b37e443be1f54d7bf4325b078e669fa53502667bf59c6f16d07a567"
+    },
+    {
+      "public_path": "h3/README.md",
+      "scope": "Stage2 navigation and implementation scope; unreleased local branch",
+      "public_sha256": "427508d467372345bf77f6dd4f0e2551ab712373ddf400cb6055c48202d5b85a"
     }
   ],
   "weights_or_data_included": false,
@@ -98,5 +113,29 @@
     "GT_future_leak": false,
     "original_CPU_regressions": 13,
     "scope": "Tiny CPU models; no additional H200 execution"
+  },
+  "GPU_validation_snapshot": {
+    "date": "2026-11-11",
+    "world_size": 8,
+    "GPU": "H200",
+    "model": "H3 33B, LoRA384+FramePack compressor",
+    "pilot_actual_updates": 10,
+    "complete_intermediate_checkpoints": [
+      110,
+      260,
+      510
+    ],
+    "intermediate_native_validation_steps": [
+      260,
+      510
+    ],
+    "cases_each": 8,
+    "RGB_frames_each": 158,
+    "MP4_files_each": 32,
+    "media_frame_geometry_and_full_decode_checks": true,
+    "final_global1010_complete": false,
+    "quality": "Mixed static-frame improvements; long camera/geometry drift remains; no convergence claim",
+    "GPU4_actual_update_verified": false,
+    "DMD_GPU_started": false
   }
 }
