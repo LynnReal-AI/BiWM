@@ -1,5 +1,5 @@
 {
-  "date": "2026-11-10",
+  "date": "2026-11-11",
   "source_run": "stage0.5_v7",
   "biwm_base_commit": "b032ad50d68c75f0cbc314e1e4ceea598d3c791d",
   "weights_included": false,
@@ -51,14 +51,15 @@
     "cpu_unit_tests": 11,
     "two_rank_cpu_fsdp_resume": "passed; model, optimizer, RNG and next update",
     "lora_export_merge": "312 targets, 624 adapter tensors, meta materialization and FP32 merge passed on reduced H3",
-    "h200_training": "not run",
+    "h200_training": "Shared FA3 repair verified on8H200 in private33B FramePack Stage2 pilot:10actualLoRA updates, complete8rank checkpoints and8case39frame videos; full-target Stage1 not run; later-stage code not released",
     "framepack_v2v": "not released",
     "dmd": "not released",
     "fa3_backward_fix": {
       "date": "2026-11-11",
       "cpu_tests": 13,
       "result": "passed; includes missing-autograd reproducer",
-      "gpu_backward": "pending mandatory gate; no full33B training claim"
+      "gpu_backward": "passed on all8H200 ranks; exact native forward, finiteQKV gradients, maximum relativeL2 .00254341633990407 versusFP32",
+      "gpu_scope": "Operator gate plus unreleased FramePack33B LoRA pilot; not full-target Stage1 or quality convergence"
     }
   },
   "runtime_versions": {
@@ -66,7 +67,7 @@
     "diffusers": "0.40.0",
     "transformers": "5.12.1",
     "peft": "0.20.0",
-    "flash-attn-3": "3.0.0 (installed, GPU execution not tested)"
+    "flash-attn-3": "3.0.0; nativeforward/backward verified on8H200 in the scoped private FramePack pilot"
   },
   "native_diffusers_transformer_sha256": "1926b1bc15a5bebda05e3dc8cde1b3955d56641ba7f8f9d6e90c8f78c66ae30c"
 }

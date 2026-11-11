@@ -160,3 +160,13 @@ mixed BF16/FP32 FSDP model/optimizer/RNG and completed another update. A reduced
 H3 topology also verified discovery of all 312 LoRA targets, adapter state
 materialization from meta tensors, and FP32 CPU merge/removal of adapters.
 No 33B Hopper training or video-quality result is claimed by these checks.
+
+Validation on 2026-11-11: 13 CPU checks passed, including the FA3 missing-autograd
+regression. All eight H200 ranks passed the native FA3 forward/backward gate:
+forward outputs were exact, gradients were finite, and the maximum Q/K/V
+relative L2 error against the FP32 reference was 0.2544%.
+An unreleased FramePack Stage 2 adapter then completed 10 actual 33B LoRA updates,
+complete eight-rank Live checkpoints, and eight 39-frame validation cases at
+1344×768. This verifies the shared FA3 repair in that GPU path; it does not
+validate the full-target Stage 1 trainer or establish quality convergence.
+FramePack and DMD code remain pending their separate training/validation release.
