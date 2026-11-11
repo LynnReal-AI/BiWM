@@ -1,0 +1,136 @@
+{
+  "stage": "H3 Stage2 FramePack v2v camera-only FM",
+  "model_base": "${H3_BASE}",
+  "adapter": "${SOLARWM_CAMERA_LORA}",
+  "initialization": "Continue pilot Live10 LoRA+FramePack compressor+FP32 master/Adam+8rank RNG; underlying base remains original official SolarWM camera10500 FP32 merge",
+  "initialization_path": "${H3_CAMERA_MERGED}",
+  "data_path": "${H3_CACHE_DIR}",
+  "conditions": [
+    "Qwen(first RGB+caption)",
+    "independent anchor at .999",
+    "clean multi-scale FramePack GT history at 1.0",
+    "noisy current target chunk",
+    "first-relative W2C camera ProPE [96:128), fixed focal K, logd4"
+  ],
+  "exclusions": [
+    "HAND",
+    "auxiliary losses",
+    "audio tokens",
+    "AnyFlow/MeanFlow",
+    "DMD in this phase",
+    "EMA training"
+  ],
+  "objective": {
+    "loss": "target-only data-ward FM MSE",
+    "shift": 3,
+    "first_chunk_latents": 7,
+    "later_chunk_latents": 5,
+    "teacher_forcing": true,
+    "attention": "full bidirectional over visible packed context/current chunk",
+    "rope": "native H3 clock within current visible history; fresh packing each forward, no KV reuse"
+  },
+  "optimizer": {
+    "name": "FP32MasterAdamW",
+    "lr": 1e-05,
+    "betas": [
+      0.9,
+      0.95
+    ],
+    "eps": 1e-08,
+    "weight_decay": 0.01,
+    "clip": 1,
+    "warmup": 0,
+    "schedule": "constant"
+  },
+  "train": {
+    "max_steps": 1010,
+    "gpu": "H200",
+    "FSDP": "FULL_SHARD",
+    "SP": 1,
+    "micro_batch": 1,
+    "effective_batch": 8,
+    "lora_rank": 384,
+    "lora_alpha": 384,
+    "lora_targets": 312,
+    "train_compressor": true,
+    "attention_backend": "_flash_3",
+    "seed": 42,
+    "checkpoint_steps": [
+      110,
+      260,
+      510,
+      1010
+    ],
+    "allowed_world_sizes": [
+      4,
+      8
+    ],
+    "additional_steps": 1000,
+    "source_step": 10,
+    "sample_step_origin": 10
+  },
+  "validation": {
+    "steps": [
+      10,
+      260,
+      510,
+      1010
+    ],
+    "cases": 8,
+    "seed": "42+case index",
+    "schedule_points": 30,
+    "CFG": 1,
+    "rollout_latents": 47,
+    "rollout_rgb_frames": 158,
+    "GT": "GT VAE reconstruction; originalRGB not extracted locally",
+    "delivery": "Eight native158RGB GT|entryLive10|currentLive and GT|currentLive comparisons; intermediate validation snapshots",
+    "limitations": "Native158RGB9chunk AR adaptation validation; no convergence orDMD-quality claim until reviewed",
+    "assignment": "all8 fixed cases;4GPU=>2 waves,8GPU=>1 wave; seed42+case index",
+    "indices": [
+      0,
+      2,
+      4,
+      6,
+      8,
+      10,
+      12,
+      13
+    ],
+    "checkpoint_steps": [
+      260,
+      510
+    ],
+    "decoder": "Native H3 FP32 weights, FP16 autocast and VAE-instance-only SDPA; DiT remainsFA3"
+  },
+  "data": {
+    "source": "SolarWM camera WDS v2",
+    "qwen_skip_reference_videos": true,
+    "resolution": [
+      768,
+      1344
+    ],
+    "pixel_frames": 158,
+    "latent_frames": 47,
+    "train_manifest_sha256": "computed by scripts/h3/stage2.sh",
+    "source_index_windows": 629861,
+    "validation_windows": 14,
+    "domains": 7,
+    "train_manifest": "${H3_TRAIN_MANIFEST}",
+    "release_root": "${SOLARWM_RELEASE_ROOT}",
+    "training_windows": 629800,
+    "heldout_source_groups": 14,
+    "source_group_rule": "strip H3 window and derived __160f crop suffix; dataset source clip, not a scene-level split"
+  },
+  "continuation": {
+    "checkpoint": "${H3_PILOT_RUN}/checkpoint_000010",
+    "require_validation": true
+  },
+  "example_scope": "Original official SolarWM camera release and first18-source/domain preparation; adapt sizes/splits for other datasets. Full-stage base/conditioning/loss/optimizer contract matches the pilot.",
+  "precision": {
+    "DiT": "Native BF16 blocks, FP32 input/output/time projections",
+    "history_compressor": "FP32",
+    "master_and_Adam_moments": "FP32",
+    "gradient_reduction": "FP32",
+    "global_gradient_norm": "FP64 accumulation"
+  }
+}

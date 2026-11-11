@@ -1,0 +1,102 @@
+{
+  "status": "Local unpublished preparation; CPU paired-source checks passed; actual phase2 final completion and release review pending",
+  "source_experiment": "biwm_h3_v5",
+  "source_phase": "Camera-only FramePack v2v, full native158f, FM-only",
+  "public_base_commit": "afd92c29d6b1a9762410879eb5bb5107a3610275",
+  "files": [
+    {
+      "source_experiment": "biwm_h3_v5",
+      "source_file": "model.py",
+      "source_sha256": "0891e6ac3ba7d2ce2553bd7548a4e930e45473e23059547d5229e20d04678ee3",
+      "public_path": "h3/framepack.py",
+      "public_sha256": "5f63cd31f6d6a7b642f910eac07e2050f5d5019dd720c83429b04849ef46b429",
+      "changes": "Namespace relocation and shared rigid-pose helper extraction only; training arithmetic preserved"
+    },
+    {
+      "source_experiment": "biwm_h3_v5",
+      "source_file": "data.py",
+      "source_sha256": "b26c0c72d6c82c35a4af4d972da218245ce32308271b73f0660ae6f665b7c72c",
+      "public_path": "h3/framepack_data.py",
+      "public_sha256": "daabe0069971bfcc5f627333d0908813f8aa44ea7d9b704fcaadb30c34703c62",
+      "changes": "Namespace relocation and shared rigid-pose helper extraction only; training arithmetic preserved"
+    },
+    {
+      "source_experiment": "biwm_h3_v5",
+      "source_file": "continuation.py",
+      "source_sha256": "71d84d04798d517741184e5dd17da7803a0e83480e095aa961722c9d213bbb5c",
+      "public_path": "h3/framepack_checkpoint.py",
+      "public_sha256": "f7dd180036463f59ed666330190f95dd496273da7461e5ffc7540316d00fbb3c",
+      "changes": "Namespace relocation and shared rigid-pose helper extraction only; training arithmetic preserved"
+    },
+    {
+      "source_experiment": "biwm_h3_v5",
+      "source_file": "vae_attention.py",
+      "source_sha256": "48bc00b3bea2cb1594e60bc657205f6070b2df3f9db198fcf99d95db31d03e52",
+      "public_path": "h3/vae_attention.py",
+      "public_sha256": "e406c07cbfacca5ea60b94cd079fa64f938f9bd9bd52429148718eab36a76362",
+      "changes": "Namespace relocation and shared rigid-pose helper extraction only; training arithmetic preserved"
+    },
+    {
+      "source_experiment": "biwm_h3_v5",
+      "source_file": "train.py",
+      "source_sha256": "2fd9ef94b6169b93a55ed8fb10a1af6efdea1f4640dd9f241faa32c0fc5428ad",
+      "public_path": "pipelines/h3/train_stage2.py",
+      "public_sha256": "841397fb608cb0685d8f6dd499080b803708141ffbaefd12e38e5ddb3fd50254",
+      "changes": "Namespace relocation and shared rigid-pose helper extraction only; training arithmetic preserved"
+    },
+    {
+      "source_experiment": "biwm_h3_v1",
+      "source_file": "merge.py",
+      "source_sha256": "e16132fcfa8cc38de7db45283cbfec359a980da36a49da80472426ad937572d4",
+      "public_path": "pipelines/h3/merge_solarwm_camera.py",
+      "public_sha256": "66c55fcb42757ff2497dd8ff4b7ba845c0b5f851811879e5023d0bcf83d18656",
+      "changes": "Namespace relocation and shared rigid-pose helper extraction only; training arithmetic preserved"
+    },
+    {
+      "source_experiment": "biwm_h3_v5",
+      "source_file": "prepare.py",
+      "source_sha256": "d3c93a05234d93b3740a19b3f60198a8068ea3bc917b9ecea3a42e979bf5bb93",
+      "public_path": "pipelines/h3/prepare_stage2_camera.py",
+      "public_sha256": "300f37142e26e96b000f419ebe6203ff252188c8b085a68620943d5ab2aaf09a",
+      "changes": "Namespace relocation and shared rigid-pose helper extraction only; training arithmetic preserved"
+    },
+    {
+      "source_experiment": "biwm_h3_v5",
+      "source_file": "prepare_full.py",
+      "source_sha256": "ef5c184d0163acb73270ad6365dd8b029c515cf8834f3f7b04913c9f5dbc58db",
+      "public_path": "pipelines/h3/prepare_stage2_manifest.py",
+      "public_sha256": "c7395b0811dae5bc4767a4ffb97282f90aa0fe46088f0aee87941864859e5661",
+      "changes": "Namespace relocation and shared rigid-pose helper extraction only; training arithmetic preserved"
+    },
+    {
+      "public_path": "scripts/h3/stage2.sh",
+      "public_sha256": "ae5a69534a1cde0c1e09f77e6f6b26ba61b78fe8ebf0c76d80719dab335582cb",
+      "scope": "Launcher/configuration/documentation prepared locally"
+    },
+    {
+      "public_path": "h3/FRAMEPACK.md",
+      "public_sha256": "4d9a3ee2b10f111e68ddf3b77a3ffbecb6613ec26b4e03fc1410c5090f065d71",
+      "scope": "Launcher/configuration/documentation prepared locally"
+    },
+    {
+      "public_path": "h3/configs/stage2_full.json",
+      "public_sha256": "a7b12a46fd2918911f3a7d6a2950e28c8d0a8c93e7e39371e37c6a4a87121c11",
+      "scope": "Launcher/configuration/documentation prepared locally"
+    },
+    {
+      "public_path": "h3/configs/stage2_pilot.json",
+      "public_sha256": "96b93bc33fc36022fc2b20abd80b2ac012b28ac186a9ad616f88b63aa1d54bc2",
+      "scope": "Launcher/configuration/documentation prepared locally"
+    }
+  ],
+  "weights_or_data_included": false,
+  "not_released": true,
+  "CPU_checks": {
+    "world_size": 4,
+    "FM_gradients_FP32_Adam_checkpoint_nextupdate_bitwise": true,
+    "full47latent_rollout_bitwise": true,
+    "GT_future_leak": false,
+    "original_CPU_regressions": 13,
+    "scope": "Tiny CPU models; no additional H200 execution"
+  }
+}
