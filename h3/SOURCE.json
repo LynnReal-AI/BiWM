@@ -38,6 +38,12 @@
       "source": "hand_control_world/solarwm_h3_repro/outputs_official_v2/stage0.5_v7/frozen/hand_control_world/solarwm_h3_repro/scripts/official_stage0p5_v34/core.py",
       "sha256": "a3d333b7e5728525830ae5180cae858fb3c871b4db02710a49c02b10251640fb",
       "usage": "camera-only adaptation, not an exact v7 reproduction"
+    },
+    {
+      "destination": "h3/fa3_autograd.py",
+      "source": "hand_control_world/H3/experiments/fp_fixed288_hand_prope_768p_lora384_20261008/fa3_autograd_policy.py",
+      "sha256": "c45af86c08977344c376831035f8eb9af64bc6d31bd7825921fe743bd620b5a4",
+      "usage": "Native FA3 autograd compatibility used by stage0.5_v7/train_ffn.py; added pre-model gradient gate"
     }
   ],
   "validation": {
@@ -47,7 +53,13 @@
     "lora_export_merge": "312 targets, 624 adapter tensors, meta materialization and FP32 merge passed on reduced H3",
     "h200_training": "not run",
     "framepack_v2v": "not released",
-    "dmd": "not released"
+    "dmd": "not released",
+    "fa3_backward_fix": {
+      "date": "2026-11-11",
+      "cpu_tests": 13,
+      "result": "passed; includes missing-autograd reproducer",
+      "gpu_backward": "pending mandatory gate; no full33B training claim"
+    }
   },
   "runtime_versions": {
     "torch": "2.9.1+cu128",

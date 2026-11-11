@@ -38,6 +38,10 @@ conditions and auxiliary losses. This implementation intentionally simplifies it
 - Explicit `_flash_3` through `h3/h3_fa3_policy.py`; no fallback. BF16 blocks,
   FP32 input/output/time projections, FP32 master AdamW, constant LR `1e-5`,
   betas `(0.9,0.95)`, weight decay `.01`, gradient clip `1`, no warmup or EMA.
+- `h3/fa3_autograd.py` retains the native FA3 backward used by the original
+  training entry. Diffusers 0.40's local FA3 custom op only wraps the forward.
+  Before loading H3, every rank verifies exact forward parity and finite Q/K/V
+  gradients against a small FP32 reference. CPU tests cannot replace this gate.
 
 The original run used 24 H200s and SP2/DP12. This release uses FSDP with DP only
 (SP1), batch size 1 per GPU, configurable accumulation and full or LoRA training.

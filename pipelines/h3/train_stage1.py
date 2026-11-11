@@ -26,6 +26,7 @@ from h3.data import CameraDataset
 from h3.distributed import clip_sharded_grad_norm
 from h3.flow import flow_matching_loss
 from h3.h3_fa3_policy import require_h3_fa3_training_backend
+from h3.fa3_autograd import verify_fa3_backward
 from h3.model import BiWMH3Transformer
 from h3.optimizer import FP32MasterAdamW
 
@@ -138,6 +139,7 @@ def main():
     torch.cuda.set_device(local_rank)
     device = torch.device("cuda", local_rank)
     require_h3_fa3_training_backend(args.attention_backend, device)
+    print(json.dumps(dict(event="fa3_backward_gate", **verify_fa3_backward(device))), flush=True)
     dist.init_process_group("nccl", timeout=timedelta(minutes=60))
     rank, world = dist.get_rank(), dist.get_world_size()
     random.seed(args.seed + rank)
