@@ -1,7 +1,7 @@
 # H3 Stage 2: FramePack v2v
 
-Local release preparation. Final training/checkpoint selection is pending;
-this branch has not been published.
+Camera-only H3 Stage 2 implementation, with completed 8×H200 functional training
+and native video validation as of 2026-11-11. Visual convergence is not established.
 
 Stage 2 merges the original SolarWM camera LoRA, then trains a fresh H3 LoRA and
 the existing BiWM FramePack compressor. The only objective is current-chunk
@@ -21,13 +21,21 @@ original/public loss, gradients, FP32 Adam, checkpoint-next-update and 47-latent
 rollout bitwise. These tests do not establish H200 memory capacity or quality.
 
 GPU validation on 2026-11-11 used one 8×H200 allocation and the actual 33B model.
-The 10-update pilot completed, followed by full-data continuation on 629800 windows
-with a fixed budget of 1000 additional updates. Complete eight-rank Live110/260/510
-checkpoints and both intermediate 8-case, 158-frame validations have been produced;
-final Live1010 training and validation are still pending. Each intermediate set
-contains 32 MP4s, including GT comparisons, with frame/geometry and complete decode
-checks. Static frame review shows mixed improvements over Live10 and persistent
-late camera/geometry drift; it does not establish convergence. The four-GPU
+The 10-update pilot completed, followed by 1000 additional updates through global
+Live1010 using a 629800-window training pool. The continuation consumed 8000 actual
+windows; it did not train a full epoch of that pool. All 8000 rank receipts were
+checked against the deterministic sample order, with finite losses/gradient norms
+and no observed fine-tuning holdout-source overlap. Complete eight-rank
+Live110/260/510/1010 checkpoints are present. Both intermediate and final
+8-case, 158-frame validation sets each contain 32 MP4s, including GT comparisons,
+with frame/geometry and full decode checks. All eight cases were reviewed using
+matched static frames across Live260/510/1010; representative chunk boundaries
+were also sampled. Live1010 was selected for a bounded native-teacher preflight
+and DMD pilot. It retains more sampled mid-video character content in one game
+case and closer late lake framing in one snow case, but does not win every case.
+Storefront/bathroom layout and night-scene ceiling/viewpoint errors remain.
+This is not convergence, camera-pose accuracy or full temporal-quality acceptance.
+The four-GPU
 accumulation2 path has CPU coverage but has not completed a 33B H200 update.
 
 ## Camera initialization and data

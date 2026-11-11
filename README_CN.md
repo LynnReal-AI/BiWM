@@ -26,8 +26,9 @@ https://github.com/user-attachments/assets/e0f8de57-bc5e-4377-9db5-1dc581eacf03
 **2026-11-10：新增 MiniMax-H3 架构适配。** 本次先发布仅保留 ProPE 相机注入的
 第一阶段 flow-matching 训练代码，支持 LoRA / 全参微调，不包含手势条件和辅助损失。
 H3 按三阶段推进：相机训练 → FramePack v2v LoRA 适配 → 双向自回归 DMD。
-当前分支另包含 [FramePack v2v 实现和短测/全量数据配置](h3/FRAMEPACK.md)，
-仍待最终训练和发布审查；H3 DMD 在实际训练验证后发布。
+**2026-11-11：新增 H3 第二阶段 [FramePack v2v 实现及配置](h3/FRAMEPACK.md)。**
+已在 8×H200 上完成新增 1000 次更新、完整 Live1010 检查点及 8 个原生 158 帧验证案例。
+后段几何和视角偏移仍存在；当前验证训练功能，不宣称画质收敛。H3 第三阶段 DMD 在实际训练验证后发布。
 环境、数据和运行方式见 [H3 使用说明](h3/README.md)。
 
 | Backbone | Stage 1 | Stage 2 DMD |
@@ -36,7 +37,7 @@ H3 按三阶段推进：相机训练 → FramePack v2v LoRA 适配 → 双向自
 | Wan2.2-TI2V-5B | ✅ | ✅ |
 | HunyuanVideo-1.5-8B | ✅ 相机文本 / 离散动作 | ✅ |
 | LTX-Video 2.3-22B | ✅ | ✅ |
-| MiniMax-H3-33B | ✅ ProPE 相机 FM；本分支含 FramePack v2v | 计划为 H3 第三阶段 |
+| MiniMax-H3-33B | ✅ ProPE 相机 FM；FramePack v2v | 计划为 H3 第三阶段 |
 
 ## 安装
 

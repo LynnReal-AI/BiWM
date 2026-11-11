@@ -1,5 +1,5 @@
 {
-  "status": "Local unpublished preparation; CPU paired-source checks passed; actual phase2 final completion and release review pending",
+  "status": "Phase2 implementation with completed8H200 functional training and native media; mixed visual quality, no convergence claim",
   "source_experiment": "biwm_h3_v5",
   "source_phase": "Camera-only FramePack v2v, full native158f, FM-only",
   "public_base_commit": "afd92c29d6b1a9762410879eb5bb5107a3610275",
@@ -75,7 +75,7 @@
     },
     {
       "public_path": "h3/FRAMEPACK.md",
-      "public_sha256": "cafdaf44d741ea5f9c40690b53f95288038f3e5f4dd9d6b6200a2b1a49e1c543",
+      "public_sha256": "e6780d3524930da06cbcd9f5d06859df381b9e65b3ca88b5dc99fc2301227d09",
       "scope": "Launcher/configuration/documentation prepared locally"
     },
     {
@@ -90,18 +90,18 @@
     },
     {
       "public_path": "README.md",
-      "scope": "Stage2 navigation and implementation scope; unreleased local branch",
-      "public_sha256": "5bf2089b194d91a1312d85daafebc48a561f97fd799b07ac42cbcdc7f41a22c1"
+      "scope": "Stage2 navigation and implementation scope; phase2 implementation",
+      "public_sha256": "f3842ec7b6f65c5dfa40b0bed792c8577ea15cade5074a29041f8c207c023ccd"
     },
     {
       "public_path": "README_CN.md",
-      "scope": "Stage2 navigation and implementation scope; unreleased local branch",
-      "public_sha256": "257c206b5b37e443be1f54d7bf4325b078e669fa53502667bf59c6f16d07a567"
+      "scope": "Stage2 navigation and implementation scope; phase2 implementation",
+      "public_sha256": "38be790e2e2f2853164d3dec4e75ee6b8369e0413aac7ff191c73736de2f6ee7"
     },
     {
       "public_path": "h3/README.md",
-      "scope": "Stage2 navigation and implementation scope; unreleased local branch",
-      "public_sha256": "427508d467372345bf77f6dd4f0e2551ab712373ddf400cb6055c48202d5b85a"
+      "scope": "Stage2 navigation and implementation scope; phase2 implementation",
+      "public_sha256": "5e89f126a6a5f6cfe72eaf9e126147f930e062b7312f0e56260894e53147c827"
     },
     {
       "public_path": "tests/test_h3_framepack_config.py",
@@ -110,7 +110,6 @@
     }
   ],
   "weights_or_data_included": false,
-  "not_released": true,
   "CPU_checks": {
     "world_size": 4,
     "FM_gradients_FP32_Adam_checkpoint_nextupdate_bitwise": true,
@@ -140,10 +139,23 @@
     "RGB_frames_each": 158,
     "MP4_files_each": 32,
     "media_frame_geometry_and_full_decode_checks": true,
-    "final_global1010_complete": false,
-    "quality": "Mixed static-frame improvements; long camera/geometry drift remains; no convergence claim",
+    "final_global1010_complete": true,
+    "quality": "All8cases reviewed via static matched frames; mixed improvements and persistent late geometry/viewpoint drift; no convergence or full temporal-quality claim",
     "GPU4_actual_update_verified": false,
-    "DMD_GPU_started": false
+    "DMD_GPU_started": false,
+    "additional_FM_updates": 1000,
+    "actual_continuation_windows": 8000,
+    "training_pool_windows": 629800,
+    "complete_checkpoints": [
+      110,
+      260,
+      510,
+      1010
+    ],
+    "final_native_validation_cases": 8,
+    "final_MP4_files": 32,
+    "selected_phase3_source_Live": 1010,
+    "phase3_source_acceptance_scope": "Finite pilot after native teacher review only"
   },
   "camera_source_audit": {
     "source_experiment": "biwm_h3_v5",
@@ -154,5 +166,27 @@
     "native_W2C_intrinsics_bitwise_equal": true,
     "ProPE_function_AST_identical": true,
     "scope": "Camera/data source agreement only; no full audiovisual input equivalence or quality claim"
-  }
+  },
+  "final_evidence": [
+    {
+      "source_experiment": "biwm_h3_v5",
+      "file": "MEDIA_VERIFICATION.step001010.json",
+      "sha256": "9195fdcb7f1d2240ef6ac020eef064e3607466ffe0e89ea7d5188ecbbfd8e054"
+    },
+    {
+      "source_experiment": "biwm_h3_v5",
+      "file": "progress_reporting/TRAINING_AUDIT.step001010.json",
+      "sha256": "5753efecbb1a828ec83df31efba47006bc9fabff20277bcb4b318e89a80527ab"
+    },
+    {
+      "source_experiment": "biwm_h3_v5",
+      "file": "QUALITY_REVIEW.step001010.json",
+      "sha256": "664896834f1284eb1aa29b472670dca8221ff0092fc66bcf798848b9c73bd157"
+    },
+    {
+      "source_experiment": "biwm_h3_v5",
+      "file": "PHASE3_SOURCE_SELECTION.json",
+      "sha256": "a64197e321fe00d9c1540334692276a22a9d0199ab39958ff79e96aa1e9e1c31"
+    }
+  ]
 }

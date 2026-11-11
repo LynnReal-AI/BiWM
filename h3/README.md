@@ -2,10 +2,11 @@
 
 BiWM includes a **camera-only MiniMax-H3 training implementation**, adapted from
 the `stage0.5_v7` source, with native bidirectional flow matching and ProPE camera
-injection. This branch also contains [Stage 2 FramePack v2v](FRAMEPACK.md): merge
-the official SolarWM camera LoRA, then train a fresh LoRA and history compressor.
-Its final training/release review is pending. Autoregressive DMD is Stage 3 and
-is not included here.
+injection. [Stage 2 FramePack v2v](FRAMEPACK.md) merges
+the official SolarWM camera LoRA, then trains a fresh LoRA and history compressor.
+The 8×H200 phase2 run completed 1000 additional updates and eight native 158-frame
+validation cases. Geometry/viewpoint drift remains. Autoregressive DMD is Stage 3
+and will be published after actual GPU training and validation.
 
 The H3 roadmap has three stages:
 
@@ -167,9 +168,10 @@ Validation on 2026-11-11: 13 CPU checks passed, including the FA3 missing-autogr
 regression. All eight H200 ranks passed the native FA3 forward/backward gate:
 forward outputs were exact, gradients were finite, and the maximum Q/K/V
 relative L2 error against the FP32 reference was 0.2544%.
-An unreleased FramePack Stage 2 adapter then completed 10 actual 33B LoRA updates,
-complete eight-rank Live checkpoints, and eight 39-frame validation cases at
-1344×768. This verifies the shared FA3 repair in that GPU path; it does not
+The FramePack Stage 2 adapter completed a 10-update 33B LoRA pilot and another
+1000 updates through Live1010, complete eight-rank checkpoints, and eight
+158-frame validation cases at 1344×768. This verifies the shared FA3 repair and
+phase2 training in that GPU path; it does not
 validate the full-target Stage 1 trainer or establish quality convergence.
 See [FRAMEPACK.md](FRAMEPACK.md) for the separate Stage 2 implementation and its
 validation status. DMD still requires actual GPU training and validation.

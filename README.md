@@ -29,10 +29,11 @@ https://github.com/user-attachments/assets/e0f8de57-bc5e-4377-9db5-1dc581eacf03
 **2026-11-10: MiniMax-H3 support added.** The first H3 release provides camera-only
 ProPE flow-matching training with LoRA/full fine-tuning. H3 uses a three-stage
 roadmap: camera training → FramePack v2v LoRA adaptation → bidirectional AR DMD.
-This branch also includes the [H3 FramePack v2v implementation](h3/FRAMEPACK.md)
-and pilot/full-data configurations. Its final training and release review are
-pending; H3 DMD will follow after actual training and validation. See the
-[H3 guide](h3/README.md).
+**2026-11-11: H3 Stage 2 FramePack v2v added.** The [implementation and configurations](h3/FRAMEPACK.md)
+completed 1000 additional updates on 8×H200, with complete Live1010 checkpoints
+and eight native 158-frame validation cases. Geometry/viewpoint drift remains;
+this is functional training validation, not convergence. H3 Stage 3 DMD will
+follow after actual training and validation. See the [H3 guide](h3/README.md).
 
 | Backbone | Stage 1 | Stage 2 DMD |
 |---|:--:|:--:|
@@ -40,7 +41,7 @@ pending; H3 DMD will follow after actual training and validation. See the
 | Wan2.2-TI2V-5B | ✅ | ✅ |
 | HunyuanVideo-1.5-8B | ✅ cam-text + discrete action | ✅ |
 | LTX-Video 2.3-22B | ✅ | ✅ |
-| MiniMax-H3-33B | ✅ ProPE camera FM; FramePack v2v in this branch | Planned as H3 Stage 3 |
+| MiniMax-H3-33B | ✅ ProPE camera FM; FramePack v2v | Planned as H3 Stage 3 |
 
 ## Setup
 
