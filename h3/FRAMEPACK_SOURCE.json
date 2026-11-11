@@ -41,8 +41,8 @@
       "source_file": "train.py",
       "source_sha256": "2fd9ef94b6169b93a55ed8fb10a1af6efdea1f4640dd9f241faa32c0fc5428ad",
       "public_path": "pipelines/h3/train_stage2.py",
-      "public_sha256": "841397fb608cb0685d8f6dd499080b803708141ffbaefd12e38e5ddb3fd50254",
-      "changes": "Namespace relocation and shared rigid-pose helper extraction only; training arithmetic preserved"
+      "public_sha256": "997d6042256babf3d3baf8147a2bda0fce1bf1f302846bbc21f0a43a9574c7bb",
+      "changes": "Namespace relocation plus fixed-recipe consistency checks before CUDA. AST verified all prior runtime arithmetic unchanged after removing the added guard."
     },
     {
       "source_experiment": "biwm_h3_v1",
@@ -75,7 +75,7 @@
     },
     {
       "public_path": "h3/FRAMEPACK.md",
-      "public_sha256": "ce6bbaf76473466a34545a65dcbcb71070f32e23070562c51aa9a7ad41146945",
+      "public_sha256": "89332cd9c2ff49f87b9a5828681b72626d54c79f16d6a9b249857dc61401faeb",
       "scope": "Launcher/configuration/documentation prepared locally"
     },
     {
@@ -102,6 +102,11 @@
       "public_path": "h3/README.md",
       "scope": "Stage2 navigation and implementation scope; unreleased local branch",
       "public_sha256": "427508d467372345bf77f6dd4f0e2551ab712373ddf400cb6055c48202d5b85a"
+    },
+    {
+      "public_path": "tests/test_h3_framepack_config.py",
+      "scope": "Fixed-recipe checks including real-entry preCUDA rejection;4CPUunittests passed",
+      "public_sha256": "9bf91731dca8ec90f510ac88448b0909cb55241b8c4768f399729c7d8b54e182"
     }
   ],
   "weights_or_data_included": false,
@@ -112,7 +117,9 @@
     "full47latent_rollout_bitwise": true,
     "GT_future_leak": false,
     "original_CPU_regressions": 13,
-    "scope": "Tiny CPU models; no additional H200 execution"
+    "scope": "Tiny CPU models; no additional H200 execution",
+    "fixed_recipe_preCUDA_guard_tests": 4,
+    "prior_runtime_AST_unchanged_except_guard": true
   },
   "GPU_validation_snapshot": {
     "date": "2026-11-11",

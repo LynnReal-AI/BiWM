@@ -76,6 +76,13 @@ checkpoint resume and pilot-to-full continuation require the saved world size.
 The ordered global sample batches agree across topologies, but floating-point
 summation and model RNG differ.
 
+The entrypoint checks fixed recipe fields before initializing CUDA: shift3,
+7/5-latent chunks, GT history, SP1, one-video microbatches, effective batch8,
+FA3, a trainable compressor, constant-LR FP32-master AdamW and CFG1 validation.
+Changing these descriptive fields does not select another implementation;
+unsupported values are rejected. Learning rate, Adam hyperparameters, clip,
+LoRA rank/alpha, update budget and validation schedule points are read at runtime.
+
 ```bash
 export OUTPUT_DIR=/path/to/new/h3_pilot
 H3_CONFIG=h3/configs/stage2_pilot.json NPROC_PER_NODE=8 bash scripts/h3/stage2.sh

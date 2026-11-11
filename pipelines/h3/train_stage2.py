@@ -104,8 +104,33 @@ def deliver(base, output, sample, before, after, case_id, device, *, rank, step=
     (directory/'COMPLETE.json').write_text(json.dumps(dict(rank=rank,case_id=case_id,frames=frames,seed=42+case_id,model_step=step,baseline_step=baseline_step,GT='VAE reconstruction; original RGB not locally extracted',full_decode=True,scope='native autoregressive rollout; quality review is separate'),indent=2)+'\n')
 
 
+def validate_recipe(config):
+    """Reject metadata that contradicts the fixed camera FM implementation."""
+    fixed = {
+        'objective': dict(shift=3, first_chunk_latents=7, later_chunk_latents=5,
+                          teacher_forcing=True),
+        'train': dict(gpu='H200', FSDP='FULL_SHARD', SP=1, micro_batch=1,
+                      effective_batch=8, lora_targets=312, train_compressor=True,
+                      attention_backend='_flash_3'),
+        'optimizer': dict(name='FP32MasterAdamW', warmup=0, schedule='constant'),
+        'validation': dict(CFG=1),
+        'data': dict(qwen_skip_reference_videos=True),
+    }
+    for section, fields in fixed.items():
+        for key, expected in fields.items():
+            if config[section].get(key) != expected:
+                raise ValueError(f'Fixed Stage2 recipe requires {section}.{key}={expected!r}')
+    allowed = config['train']['allowed_world_sizes']
+    if not allowed or not set(allowed) <= {4, 8}:
+        raise ValueError('Stage2 supports only4/8 H200 ranks')
+    points = config['validation']['schedule_points']
+    if type(points) is not int or points < 2:
+        raise ValueError('Validation requires at least two integer schedule points')
+
+
 def main():
     output=Path(os.environ['BIWM_RUN']).resolve();config=json.loads((output/'config.json').read_text())
+    validate_recipe(config)
     frames=config['validation']['rollout_latents']
     if frames<7 or (frames-7)%5 or frames>config['data']['latent_frames']:
         raise ValueError('Validation requires complete native latent chunks within the source video')
