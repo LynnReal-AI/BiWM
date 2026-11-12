@@ -1,6 +1,6 @@
 {
-  "at": 1794416004.718335,
-  "status": "Native8H200 public continuation completed new18G90C to G20C105, fullG3/G20 checkpoints,96nativeMP4s and all8rank G20 bitwiseGPUrestore. Renderer label API repaired via decode-only recovery; quality not converged.",
+  "at": 1794479021.9636443,
+  "status": "Native8H200 continuation completed new30G150C from G20C105 to G50C255; 1440 rank receipts, fullG21/G50 checkpoints,96nativeMP4s,8comparisonMP4s and all8rank G50 bitwiseGPUrestore passed. Sampled partial quality gains; camera/layout/identity/action errors remain, not converged.",
   "source_experiment": "biwm_h3_v9",
   "source_base_commit": "883ab0ba1565716603b1cef5e60cb1639d2fff24",
   "files": [
@@ -105,7 +105,7 @@
     },
     {
       "path": "h3/DMD.md",
-      "sha256": "0430041d67a4630cd12b5128ecb8c361f4e97195ea6f98ee99ed977328c08283"
+      "sha256": "2c87f3fbde8498caa05fcad19d6c29103ec0528d388715fd738d8d7677bd1c25"
     },
     {
       "path": "tests/test_h3_dmd_config.py",
@@ -200,7 +200,8 @@
       "3f841e8d0cc4aecc13279b21d5fd56d6cb68f0be4ac05ef69cd2f2e839bd57c2"
     ],
     "quality_review_addendum_sha256": "d7511cd9f0e18a4f753cd3ece30e80904042de83b8b8731ae01a55ffbb7a3d7f",
-    "quality_review_addendum_scope": "Consecutivecase012frames138..143withdraw definite140/141seamjump assertion; severe lateblur andviewpoint/layout errors remain, no convergenceclaim. Originalpinnedreview preserved."
+    "quality_review_addendum_scope": "Consecutivecase012frames138..143withdraw definite140/141seamjump assertion; severe lateblur andviewpoint/layout errors remain, no convergenceclaim. Originalpinnedreview preserved.",
+    "retention_note": "Historical v9 G1C10 rank payloads were pruned on 2026-11-12 with explicit user authorization; original complete manifest preserved and PRUNED.json marks that checkpoint non-restorable. G2/G3/G20 remain retained, as do new G21/G50."
   },
   "public_native_GPU_continuation": {
     "public_training_commit": "20c784998a53399181879d6b7bfb95ad38854f19",
@@ -244,7 +245,7 @@
     "gate_sha256": "33e0d6febfa71c5ab03b4f679edea641a73dac946082749369481cd9279b1827",
     "larger_run_budget_complete": true
   },
-  "latest_validation_experiment": "biwm_h3_v10",
+  "latest_validation_experiment": "biwm_h3_v11",
   "public_native_bounded_continuation": {
     "public_training_commit": "20c784998a53399181879d6b7bfb95ad38854f19",
     "world_size": 8,
@@ -307,14 +308,23 @@
   "native_GPU_final_restore_gate": {
     "all8rank_passed": true,
     "source_counters": {
-      "G": 20,
-      "C": 105
+      "G": 50,
+      "C": 255
     },
     "new_G": 0,
     "new_C": 0,
-    "source_checkpoint_complete_sha256": "341534594b1165d4492571bc1e3ab0d7c4ab56ad0ec463b3cc943890920f71b0",
-    "gate_sha256": "7ee029a392cfc604563ba32d80bd15cecb4abf480c81679d59e75a113418dd9a",
-    "complete_sha256": "aad5c36c54571acf09aab35751dbcce1ca74abccc95e4a59b19a699fe28cd104",
+    "source_checkpoint_complete_sha256": "f1b7f113f442ebe217f9c1b91592dfb58026059559f56794e29677afc3219bb6",
+    "complete_sha256": "3dbd83ea6862876c2ba8dac7c6e065b0a7d02f51eed34ab498d687f1d226dee6",
+    "rank_receipts": [
+      "5d5fafc0bfcf5034f35d53d8c3a3ca89de6e1c136ce58c7a610acace13eec8f6",
+      "3cdb7a93d83dab77f46ede481cef61c2e8c06a8e93ec35af1000df691ae01234",
+      "d1ed0d78f87d5abc845b0b43e7b64e441665ad9ae992669e533ec036bc70031e",
+      "a3ed322c4061f4443fe65bb8588f8a6b45107ebf7bf7cb9bb2fcddbe0239ca0e",
+      "42c8e8bc1bc7be0f6cdc788c3cbf7567c79d5378c638cbe0d865d092d469822e",
+      "3b478ca0925311ea22118cc6fad1436ff15263400ac2806e6a7b8627a0bc3063",
+      "293acc8eb668cde4c3e2a817f144fd2343c97e862c5009f6e651d63aa651ccc2",
+      "d7da41923205a1afcebb446ec2e1ff8664ff3784befa7f45e8ca34fcb4643d39"
+    ],
     "scope": "Native G/C shards, bothFP32Adams, allRNG anddata cursors bitwise; no next optimizer step."
   },
   "native_media_delivery_recovery": {
@@ -332,5 +342,112 @@
     "original_exit_receipt_preserved": true,
     "recovery_gate_sha256": "7a9dc57011a9850823d5888a7c05eb6321a832d81c96a1bd2457b7f51657c8d1",
     "scope": "Only media API labels and native VAE/MP4 recovery; no training arithmetic/source/checkpoint changes."
+  },
+  "public_native_G50_continuation": {
+    "public_training_commit": "bcb583cb1f18210f85a08e58df12925ef59189b3",
+    "world_size": 8,
+    "DP": 8,
+    "SP": 1,
+    "effective_batch": 8,
+    "inherited": {
+      "G": 20,
+      "C": 105
+    },
+    "actual_new": {
+      "G": 30,
+      "C": 150,
+      "G_samples": 240,
+      "C_samples": 1200
+    },
+    "cumulative": {
+      "G": 50,
+      "C": 255
+    },
+    "no_new_warmup": true,
+    "rank_receipts": 1440,
+    "full_native33B_critic": true,
+    "latent_frames": 47,
+    "chunks": 9,
+    "RGB_frames": 158,
+    "resolution": [
+      768,
+      1344
+    ],
+    "training_exit_code": 0,
+    "media_recovery_needed": false,
+    "checkpoints": [
+      {
+        "G": 21,
+        "C": 110,
+        "rank_payloads": 8,
+        "bytes": 561936242960,
+        "manifest": "biwm_h3_v11/checkpoint_000021/COMPLETE.json",
+        "manifest_sha256": "b1cac7a8fa9fa677962eb99428c7fca33a811229ba88360fb7e911c6df24e5fb",
+        "scope": "All rank payload sizes and complete manifests checked; payload digests are those recorded at save, not a fresh TB-scale rehash."
+      },
+      {
+        "G": 50,
+        "C": 255,
+        "rank_payloads": 8,
+        "bytes": 561936242960,
+        "manifest": "biwm_h3_v11/checkpoint_000050/COMPLETE.json",
+        "manifest_sha256": "f1b7f113f442ebe217f9c1b91592dfb58026059559f56794e29677afc3219bb6",
+        "scope": "All rank payload sizes and complete manifests checked; payload digests are those recorded at save, not a fresh TB-scale rehash."
+      }
+    ],
+    "validation_steps": [
+      21,
+      35,
+      50
+    ],
+    "native_MP4s": 96,
+    "native_four_panel_comparison_MP4s": 8,
+    "cases_per_validation": 8,
+    "latest": {
+      "generator": {
+        "role": "generator",
+        "step": 50,
+        "global_loss": 0.06639710723719926,
+        "grad_norm": 0.025485803661850652,
+        "max_seconds": 147.70384067785926,
+        "max_peak_GiB": 106.46108436584473,
+        "optimizer_state_moved_bytes": 397471721088
+      },
+      "critic": {
+        "role": "critic",
+        "step": 255,
+        "global_loss": 0.030932615976780653,
+        "grad_norm": 0.08795406037783902,
+        "max_seconds": 83.53568395203911,
+        "max_peak_GiB": 109.31660461425781,
+        "optimizer_state_moved_bytes": 0
+      }
+    },
+    "quality_converged": false,
+    "training_audit_sha256": "29fb6835e14b0ec7cb2d4384e30a9d285ac88b33bfd73b16c93e13f46c97e6dc",
+    "executed_config_sha256": "30ad7a26d26c71c6b299db52d69505cddcbeb142cf9c9e46b063fa286efdd421",
+    "media_verification_sha256": [
+      "aa604ec4cd507303ee85b26126ba6673bba15d6b3e31ed12fdf9d1ad8af20917",
+      "7d1df6153e6917fae990f1f51598b32315d634c370ab17815dd8844bcffa1134",
+      "58827ff96013463dd130b31fb96b9d0763f3f2cd4816b4af4e6d1464c82fff3e"
+    ],
+    "quality_review_sha256": "358e5f4078892aa1661abb80dbdcd7eb1f226412cdab1944bf653a236715009f",
+    "results_sha256": "9ddb7074a1047ef75e24473f5a77c2dad3465cb6eaebe2450451a00394aa76b6",
+    "report_sha256": "756b1ae5f1d75c5299c614b81c07bb432b29b9f9e1ceecccfae40279aa3721d3",
+    "quality_scope": "Sampled static review of all 8 cases: 6 overview frames, 8 adjacent chunk-boundary pairs and native frame157 per case. Not a full perceptual review of every frame or a quantitative pose/control metric. GT is VAE reconstruction. Teacher and autoregressive sampling use different RNG paths; no paired-noise claim.",
+    "limitations": "Store detail and late game-character presence improve over G20 in sampled cases, but character identity/clothing/action, bathroom vanity omission, camera/layout and textures remain wrong. Not a full temporal or quantitative control-quality pass."
+  },
+  "historical_G20_GPU_final_restore_gate": {
+    "all8rank_passed": true,
+    "source_counters": {
+      "G": 20,
+      "C": 105
+    },
+    "new_G": 0,
+    "new_C": 0,
+    "source_checkpoint_complete_sha256": "341534594b1165d4492571bc1e3ab0d7c4ab56ad0ec463b3cc943890920f71b0",
+    "gate_sha256": "7ee029a392cfc604563ba32d80bd15cecb4abf480c81679d59e75a113418dd9a",
+    "complete_sha256": "aad5c36c54571acf09aab35751dbcce1ca74abccc95e4a59b19a699fe28cd104",
+    "scope": "Native G/C shards, bothFP32Adams, allRNG anddata cursors bitwise; no next optimizer step."
   }
 }

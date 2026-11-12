@@ -1,28 +1,41 @@
 # H3 Stage 3: bidirectional autoregressive DMD
 
 This is the camera-only H3 adaptation of the BiWM Wan2.2-TI2V-5B self-forcing
-DMD route. On 2026-11-11 the native eight-H200 run restored the G2/C15 pilot and
-completed **18 new G / 90 new C updates to G20/C105**, without extra warmup.
-G3/C20 and G20/C105 contain all eight rank payloads (561,936,242,960 bytes each).
-G3/G10/G20 each deliver eight native 158-frame cases and 32 MP4s; all 96 videos
-passed independent frame/geometry/full-decode/SHA checks. G10 retains validation
-latents but no full checkpoint. A separate eight-GPU G20 restore reproduced both
-models, both FP32 Adam states, all RNG streams and data cursors bitwise, with
-zero optimizer updates. Sampled review shows a substantial sharpness improvement
-over G0/G2, with remaining subject, viewpoint and layout errors. The native
-teacher also loses the late subject in one game case. This is bounded training
-validation, not a converged model-quality release.
-Source extraction and validation scope are recorded in [DMD_SOURCE.json](DMD_SOURCE.json).
+DMD route. On 2026-11-12 the latest native eight-H200 run restored G20/C105 and
+completed **30 new G / 150 new C updates to G50/C255**, without extra warmup.
+All 1,440 new rank receipts passed exact manifest-order, cursor, synchronized
+exit/sigma/loss and finite-gradient audits. G21/C110 and G50/C255 each contain
+all eight complete rank payloads (561,936,242,960 bytes). G21/G35/G50 each deliver
+eight native 158-frame cases and 32 MP4s; all 96 passed independent
+frame/geometry/full-decode/SHA checks. G35 retains latents, without a full
+checkpoint. A separate native eight-GPU G50 restore reproduced both models,
+both FP32 Adam states, all RNG and cursors bitwise, adding zero updates.
+The final G50 global loss was 0.0663971072 (slowest rank 147.70 seconds);
+C255 was 0.0309326160 (83.54 seconds). Scalar losses do not establish quality.
 
-The public training snapshot `20c7849` completed the updates, checkpoints and
-all validation tensors, then its media call failed because the shared renderer
-did not accept the teacher/DMD label arguments. Commit `b5c86a3` fixes that API
-and checks the real FM, teacher and DMD call signatures. An independent native
-VAE-only process using this fix decoded all saved G3/G10/G20 tensors, adding
-zero G/C updates. The original failed exit receipt is preserved separately from
-the successful decode and media audits. The training source and G20 checkpoint
-were unchanged. Native VAE decoding uses FP32 weights, FP16 autocast and its
-explicit instance-local SDPA path; DiT training retains `_flash_3`.
+Native GT-VAE-reconstruction / CFG1-teacher / G20 / G50 four-panel MP4s were
+created for all eight cases. Static review covered six overview frames, all
+eight adjacent chunk-boundary pairs and the native final frame per case.
+G50 preserves the late store display that G20 blurred/replaced and retains a
+snow-scene character to frame157, whereas G20 and teacher lose it. However,
+the retained figure has wrong identity, clothing and action. Bathroom vanity
+omission, invented textures, camera and layout errors remain. Some cases have
+no clear overall gain. No hard cut was established in the sampled boundary
+pairs; this is not an exhaustive temporal/perceptual or quantitative camera
+control evaluation. Teacher and AR use different RNG paths, so this is not a
+paired-noise comparison. GT is VAE reconstruction, not original RGB.
+**Quality acceptance and convergence remain unestablished.**
+Source extraction and evidence digests are recorded in [DMD_SOURCE.json](DMD_SOURCE.json).
+
+Historical G20 run (2026-11-11): snapshot `20c7849` completed the G3..20 updates,
+checkpoints and validation tensors, then media delivery failed because the
+shared renderer did not accept teacher/DMD label arguments. Commit `b5c86a3`
+repairs that API and checks the real FM, teacher and DMD signatures. A separate
+native VAE-only process decoded G3/G10/G20, adding zero G/C updates; original
+failed and recovered receipts remain distinct. **The G50 run used snapshot
+`bcb583c` with this fix, exited successfully and needed no recovery.** Native
+VAE decoding uses FP32 weights, FP16 autocast and explicit instance-local SDPA;
+DiT training retains `_flash_3`.
 
 The generator keeps the selected Stage 2 LoRA384 and FramePack compressor on the
 original SolarWM camera-merged base. Export folds that Stage 2 adapter into two
@@ -236,5 +249,5 @@ stream and data cursors against the saved rank payloads. Device relocation is
 allowed; shapes, shard identity, dtypes and values must match. It needs the same
 large-model CPU RAM/GPU/storage capacity as a real restore. Its comparator and
 entrypoint continuation have tiny CPU coverage. The native eight-GPU restore
-gate passed for the G2/C15 pilot and final G20/C105 checkpoints; this does not execute a next GPU
+gate passed for the G2/C15 pilot, G20/C105 and G50/C255 checkpoints; this does not execute a next GPU
 optimizer step or establish next-cycle bitwise equivalence on production GPUs.

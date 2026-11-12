@@ -34,14 +34,15 @@ completed 1000 additional updates on 8×H200, with complete Live1010 checkpoints
 and eight native 158-frame validation cases. Geometry/viewpoint drift remains;
 this is functional training validation, not convergence. The separate
 [H3 Stage 3 DMD implementation](h3/DMD.md) includes native teacher preflight,
-full-critic self-forcing training and complete-state checkpoints. The native
-8×H200 run continued the complete G2/C15 pilot state through 18 new G and 90 new C
-updates to G20/C105, without extra warmup. G3/G10/G20 each produced eight native
-158-frame cases: all 96 MP4s passed independent integrity checks. G20 models,
-both FP32 Adams, RNG and cursors restored bitwise on all eight GPUs. Late sharpness
-improved over G2, while subject, viewpoint and layout errors remain; this is not
-a converged model-quality release. See the [H3 guide](h3/README.md) and
-[validation scope](h3/DMD.md), including the decode-only renderer repair.
+full-critic self-forcing training and complete-state checkpoints. The latest native
+8×H200 continuation completed **30 new G / 150 new C updates to G50/C255**
+from the complete G20/C105 state, without extra warmup. G21/G35/G50 each produced
+eight native 158-frame cases: all 96 MP4s passed independent integrity checks.
+G50 models, both FP32 Adams, RNG and cursors restored bitwise on all eight GPUs.
+Sampled comparison with G20 shows better late content/detail in some cases,
+including a retained game character, but identity/action, camera and layout
+errors remain. This is bounded training validation, not a converged model-quality
+release. See the [H3 guide](h3/README.md) and [validation scope](h3/DMD.md).
 
 | Backbone | Stage 1 | Stage 2 DMD |
 |---|:--:|:--:|
@@ -49,7 +50,7 @@ a converged model-quality release. See the [H3 guide](h3/README.md) and
 | Wan2.2-TI2V-5B | ✅ | ✅ |
 | HunyuanVideo-1.5-8B | ✅ cam-text + discrete action | ✅ |
 | LTX-Video 2.3-22B | ✅ | ✅ |
-| MiniMax-H3-33B | ✅ ProPE camera FM; FramePack v2v | Experimental H3 Stage 3: G20/C105, native media and full-state restore verified |
+| MiniMax-H3-33B | ✅ ProPE camera FM; FramePack v2v | Experimental H3 Stage 3: G50/C255, native media and full-state restore verified |
 
 ## Setup
 
