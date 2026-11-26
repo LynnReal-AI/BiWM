@@ -13,6 +13,7 @@ BiWM 是一个极简的 Video World Model 训练框架：将预训练双向视�
 
 <p align="center">
   <a href="https://arxiv.org/abs/2606.10135"><img src="https://img.shields.io/badge/arXiv-2606.10135-B31B1B?style=for-the-badge&logo=arxiv&logoColor=white" alt="arXiv"></a>
+  <a href="https://huggingface.co/papers/2606.10135"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Paper-FFD21E?style=for-the-badge&logoColor=black" alt="HF Paper"></a>
   <a href="assets/wechat.jpg"><img src="https://img.shields.io/badge/WeChat-07C160?style=for-the-badge&logo=wechat&logoColor=white" alt="WeChat"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-7C3AED?style=for-the-badge" alt="License"></a>
 </p>
@@ -67,6 +68,8 @@ HY15 使用 Qwen2.5-VL，LTX23 使用 Gemma-3。HY15 细节见 [环境说明](hu
 
 ## 数据
 
+从 [Hugging Face 下载数据集](https://huggingface.co/datasets/shaohao011/BiWM)。
+
 ```bash
 hf download shaohao011/BiWM --repo-type dataset --local-dir dataset
 tar -xf dataset/videos_syn.tar -C dataset
@@ -103,7 +106,7 @@ H3 使用独立环境及预编码相机数据，见 [H3 使用说明](h3/README.
 
 ```bibtex
 @article{rui2026biwm,
-  title={BiWM: Advancing Open-Source Interactive Video World Models with Bidirectional Autoregression},
+  title={{BiWM}: Advancing Open-Source Interactive Video World Models with Bidirectional Autoregression},
   author={Rui, Shaohao and Mao, Xiaofeng and Zhang, Zhanyu and Lin, Peijia and Zhu, Yansong and Zhang, Yibo and Wan, Haibin and Ma, Weijie},
   journal={arXiv preprint arXiv:2606.10135},
   year={2026}
