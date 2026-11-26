@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://arxiv.org/abs/2606.10135"><img src="https://img.shields.io/badge/arXiv-2606.10135-B31B1B?style=for-the-badge&logo=arxiv&logoColor=white" alt="arXiv"></a>
-  <a href="https://huggingface.co/papers/2603.25730"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Paper-FFD21E?style=for-the-badge&logoColor=black" alt="HF Paper"></a>
+  <a href="https://huggingface.co/papers/2606.10135"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Paper-FFD21E?style=for-the-badge&logoColor=black" alt="HF Paper"></a>
   <a href="assets/wechat.jpg"><img src="https://img.shields.io/badge/WeChat-07C160?style=for-the-badge&logo=wechat&logoColor=white" alt="WeChat"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-7C3AED?style=for-the-badge" alt="License"></a>
 </p>
@@ -82,7 +82,7 @@ for HY15-specific setup and troubleshooting.
 
 ## Data
 
-Download the released dataset:
+Download the [released dataset on Hugging Face](https://huggingface.co/datasets/shaohao011/BiWM):
 
 ```bash
 hf download shaohao011/BiWM --repo-type dataset --local-dir dataset
@@ -185,7 +185,7 @@ python pipelines/wan/infer_stage2.py \
 
 ```bibtex
 @article{rui2026biwm,
-  title={BiWM: Advancing Open-Source Interactive Video World Models with Bidirectional Autoregression},
+  title={{BiWM}: Advancing Open-Source Interactive Video World Models with Bidirectional Autoregression},
   author={Rui, Shaohao and Mao, Xiaofeng and Zhang, Zhanyu and Lin, Peijia and Zhu, Yansong and Zhang, Yibo and Wan, Haibin and Zhao, Zhangrui and Ma, Weijie},
   journal={arXiv preprint arXiv:2606.10135},
   year={2026}
