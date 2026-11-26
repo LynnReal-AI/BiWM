@@ -7,6 +7,7 @@
 <p align="center">
   <a href="https://arxiv.org/abs/2606.10135"><img src="https://img.shields.io/badge/arXiv-2606.10135-B31B1B?style=for-the-badge&logo=arxiv&logoColor=white" alt="arXiv"></a>
   <a href="https://huggingface.co/papers/2606.10135"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Paper-FFD21E?style=for-the-badge&logoColor=black" alt="HF Paper"></a>
+  <a href="https://huggingface.co/datasets/shaohao011/BiWM"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-FFD21E?style=for-the-badge&logoColor=black" alt="HF Dataset"></a>
   <a href="assets/wechat.jpg"><img src="https://img.shields.io/badge/WeChat-07C160?style=for-the-badge&logo=wechat&logoColor=white" alt="WeChat"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-7C3AED?style=for-the-badge" alt="License"></a>
 </p>
